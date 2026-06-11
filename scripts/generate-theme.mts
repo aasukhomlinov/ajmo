@@ -99,7 +99,7 @@ function mapGroup(
 ): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   if (!node) return out;
-  for (const [key, child] of Object.entries(node)) {
+  for (const [key, child] of Object.entries(node) as [string, TokenNode][]) {
     if (key.startsWith('$')) continue;
     const tokenPath = prefix ? `${prefix}.${key}` : key;
     out[key] = isLeaf(child)
