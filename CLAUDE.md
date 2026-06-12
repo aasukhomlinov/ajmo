@@ -30,9 +30,17 @@ FIXED decisions:
 
 EVERYTHING ELSE (palette, theme, spacing grid, radii, shadows, type scale,
 component patterns) is defined in design-tokens.json at the repo root —
-created and approved in the design-direction phase. Until that file exists,
-do NOT assume any colors or visual patterns. Once it exists, it is the single
-source of truth for both Figma Variables and the app theme.
+created and approved in the design-direction phase. It is the single source
+of truth for both Figma Variables and the app theme; never use values that
+aren't derived from it.
+
+APPROVED DIRECTION — «Afiša» (night poster): dark-first UI inspired by
+Belgrade club flyers. Near-black bg (#0D0E11), flat surface steps + hairline
+borders instead of blurry shadows, acid-lime accent (#CCFF00) used hard on
+CTAs/badges. Type signature = axis contrast: Display/H1 wide+heavy (wdth
+120-125, wght 800), captions/buttons condensed (wdth 85-90, uppercase).
+Event cards: full-bleed image with scrim, wide title overlapping the image
+edge, lime date chip. Moderate radii (12-16) — street, not bubbly.
 - Figma design system file key: <FIGMA_FILE_KEY> (fill in after creation)
 
 ## Figma MCP rules

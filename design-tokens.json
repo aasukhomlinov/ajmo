@@ -1,0 +1,228 @@
+{
+  "$description": "Ajmo design tokens — Direction A «Afiša» (night poster). Single source of truth for Figma Variables and src/lib/theme.ts. Dark-first UI; acid lime accent; wide display type vs condensed labels.",
+  "color": {
+    "bg": {
+      "$type": "color",
+      "$value": "#0D0E11",
+      "$description": "App background — near-black, slightly warm"
+    },
+    "surface": {
+      "base": {
+        "$type": "color",
+        "$value": "#17181D",
+        "$description": "Cards, sheets, inputs"
+      },
+      "raised": {
+        "$type": "color",
+        "$value": "#1F2128",
+        "$description": "Elevated layer on top of surface.base (popovers, active rows)"
+      }
+    },
+    "text": {
+      "primary": {
+        "$type": "color",
+        "$value": "#F4F4F2"
+      },
+      "secondary": {
+        "$type": "color",
+        "$value": "#9A9CA6"
+      },
+      "disabled": {
+        "$type": "color",
+        "$value": "#5C5E68"
+      },
+      "onAccent": {
+        "$type": "color",
+        "$value": "{color.bg}",
+        "$description": "Text/icons placed on accent fills"
+      }
+    },
+    "accent": {
+      "base": {
+        "$type": "color",
+        "$value": "#CCFF00",
+        "$description": "Acid lime — CTAs, active tab, wanna-join fill, date badges"
+      },
+      "pressed": {
+        "$type": "color",
+        "$value": "#A8D400"
+      },
+      "subtle": {
+        "$type": "color",
+        "$value": "#CCFF001F",
+        "$description": "12% lime tint for selected/highlighted backgrounds"
+      }
+    },
+    "success": {
+      "$type": "color",
+      "$value": "#4ADE80"
+    },
+    "warning": {
+      "$type": "color",
+      "$value": "#FFB020"
+    },
+    "error": {
+      "$type": "color",
+      "$value": "#FF5C5C"
+    },
+    "border": {
+      "$type": "color",
+      "$value": "#2A2C34",
+      "$description": "Hairline separators between flat dark layers"
+    },
+    "scrim": {
+      "$type": "color",
+      "$value": "#0D0E11CC",
+      "$description": "Gradient end over event images so titles stay readable"
+    }
+  },
+  "spacing": {
+    "xs": { "$type": "dimension", "$value": "4px" },
+    "sm": { "$type": "dimension", "$value": "8px" },
+    "md": { "$type": "dimension", "$value": "12px" },
+    "lg": { "$type": "dimension", "$value": "16px" },
+    "xl": { "$type": "dimension", "$value": "20px" },
+    "2xl": { "$type": "dimension", "$value": "24px" },
+    "3xl": { "$type": "dimension", "$value": "32px" },
+    "4xl": { "$type": "dimension", "$value": "40px" },
+    "5xl": { "$type": "dimension", "$value": "48px" },
+    "6xl": { "$type": "dimension", "$value": "64px" }
+  },
+  "radius": {
+    "sm": { "$type": "dimension", "$value": "8px" },
+    "md": { "$type": "dimension", "$value": "12px" },
+    "lg": { "$type": "dimension", "$value": "16px" },
+    "xl": { "$type": "dimension", "$value": "24px" },
+    "full": { "$type": "dimension", "$value": "999px" }
+  },
+  "shadow": {
+    "card": {
+      "$type": "shadow",
+      "$value": {
+        "color": "#00000059",
+        "offsetX": "0px",
+        "offsetY": "2px",
+        "blur": "8px",
+        "spread": "0px"
+      },
+      "$description": "Subtle lift — elevation comes mainly from surface steps, not shadows"
+    },
+    "raised": {
+      "$type": "shadow",
+      "$value": {
+        "color": "#00000073",
+        "offsetX": "0px",
+        "offsetY": "4px",
+        "blur": "16px",
+        "spread": "0px"
+      }
+    },
+    "overlay": {
+      "$type": "shadow",
+      "$value": {
+        "color": "#00000080",
+        "offsetX": "0px",
+        "offsetY": "8px",
+        "blur": "32px",
+        "spread": "0px"
+      },
+      "$description": "Sheets and modals"
+    }
+  },
+  "typography": {
+    "display": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "TikTokSans",
+        "fontSize": "34px",
+        "lineHeight": "40px",
+        "fontWeight": 800,
+        "letterSpacing": "-0.5px",
+        "wght": 800,
+        "wdth": 125,
+        "opsz": 36
+      },
+      "$description": "Poster voice: wide + heavy"
+    },
+    "h1": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "TikTokSans",
+        "fontSize": "26px",
+        "lineHeight": "32px",
+        "fontWeight": 800,
+        "letterSpacing": "-0.25px",
+        "wght": 800,
+        "wdth": 120,
+        "opsz": 28
+      }
+    },
+    "h2": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "TikTokSans",
+        "fontSize": "20px",
+        "lineHeight": "26px",
+        "fontWeight": 700,
+        "letterSpacing": "0px",
+        "wght": 700,
+        "wdth": 110,
+        "opsz": 22
+      }
+    },
+    "body": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "TikTokSans",
+        "fontSize": "16px",
+        "lineHeight": "24px",
+        "fontWeight": 400,
+        "letterSpacing": "0px",
+        "wght": 400,
+        "wdth": 100,
+        "opsz": 16
+      }
+    },
+    "bodySmall": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "TikTokSans",
+        "fontSize": "14px",
+        "lineHeight": "20px",
+        "fontWeight": 400,
+        "letterSpacing": "0px",
+        "wght": 400,
+        "wdth": 100,
+        "opsz": 14
+      }
+    },
+    "caption": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "TikTokSans",
+        "fontSize": "12px",
+        "lineHeight": "16px",
+        "fontWeight": 500,
+        "letterSpacing": "0.5px",
+        "wght": 500,
+        "wdth": 85,
+        "opsz": 12
+      },
+      "$description": "Flyer fine print: condensed, used uppercase in components"
+    },
+    "button": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "TikTokSans",
+        "fontSize": "16px",
+        "lineHeight": "20px",
+        "fontWeight": 600,
+        "letterSpacing": "0.5px",
+        "wght": 600,
+        "wdth": 90,
+        "opsz": 16
+      },
+      "$description": "Condensed semibold, uppercase in components"
+    }
+  }
+}

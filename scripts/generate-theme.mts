@@ -157,6 +157,11 @@ function toTypography(value: unknown, tokenPath: string) {
   if (t.letterSpacing !== undefined) {
     preset.letterSpacing = toNumber(t.letterSpacing, `${tokenPath}.letterSpacing`);
   }
+  // Variable-font axes (TikTok Sans: wght/wdth/opsz) -> RN fontVariationSettings.
+  const axes = (['wght', 'wdth', 'opsz'] as const)
+    .filter((axis) => t[axis] !== undefined)
+    .map((axis) => `'${axis}' ${toNumber(t[axis], `${tokenPath}.${axis}`)}`);
+  if (axes.length > 0) preset.fontVariationSettings = axes.join(', ');
   return preset;
 }
 
