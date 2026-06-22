@@ -74,6 +74,28 @@
       "$type": "color",
       "$value": "#0D0E11CC",
       "$description": "Gradient end over event images so titles stay readable"
+    },
+    "glass": {
+      "fill": {
+        "$type": "color",
+        "$value": "#FFFFFF1A",
+        "$description": "Liquid Glass capsule fill (10% white) — Android TabBar fallback; iOS uses native glass"
+      },
+      "activePill": {
+        "$type": "color",
+        "$value": "#FFFFFF24",
+        "$description": "Selection pill behind the active tab (14% white) — dark surface"
+      },
+      "fillLight": {
+        "$type": "color",
+        "$value": "#FFFFFFB3",
+        "$description": "Liquid Glass capsule fill for LIGHT surfaces (70% white frosted) — TabBar Surface=Light"
+      },
+      "activePillLight": {
+        "$type": "color",
+        "$value": "#0D0E111F",
+        "$description": "Active-tab selection pill on light glass (12% near-black tint)"
+      }
     }
   },
   "spacing": {
@@ -127,6 +149,43 @@
         "spread": "0px"
       },
       "$description": "Sheets and modals"
+    }
+  },
+  "glass": {
+    "$description": "Liquid Glass approximation constants — Android TabBar fallback + Figma effect style Glass/Bar. iOS uses the native system bar; do not restyle it.",
+    "blur": { "$type": "dimension", "$value": "28px" },
+    "specular": {
+      "$type": "shadow",
+      "$value": {
+        "color": "#FFFFFF40",
+        "offsetX": "0px",
+        "offsetY": "1px",
+        "blur": "0px",
+        "spread": "0px"
+      },
+      "$description": "Inner top-edge highlight"
+    },
+    "innerDepth": {
+      "$type": "shadow",
+      "$value": {
+        "color": "#00000033",
+        "offsetX": "0px",
+        "offsetY": "-1px",
+        "blur": "2px",
+        "spread": "0px"
+      },
+      "$description": "Inner bottom-edge shadow"
+    },
+    "shadow": {
+      "$type": "shadow",
+      "$value": {
+        "color": "#00000059",
+        "offsetX": "0px",
+        "offsetY": "8px",
+        "blur": "24px",
+        "spread": "0px"
+      },
+      "$description": "Drop shadow under the floating capsule"
     }
   },
   "typography": {

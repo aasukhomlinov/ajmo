@@ -171,11 +171,15 @@ const theme = {
   radii: mapGroup(pickGroup('radius', 'radii', 'borderRadius'), (v, p) => toNumber(v, p)),
   shadows: mapGroup(pickGroup('shadow', 'shadows'), toShadow),
   typography: mapGroup(pickGroup('typography', 'type'), toTypography),
+  // Liquid Glass constants (Android TabBar fallback; iOS uses the native bar).
+  glass: mapGroup(pickGroup('glass'), (v, p) =>
+    p === 'blur' ? toNumber(v, p) : toShadow(v, p),
+  ),
 };
 
 const KNOWN_GROUPS = new Set([
   'color', 'colors', 'spacing', 'space', 'radius', 'radii', 'borderRadius',
-  'shadow', 'shadows', 'typography', 'type',
+  'shadow', 'shadows', 'typography', 'type', 'glass',
 ]);
 for (const name of Object.keys(tokens)) {
   if (!name.startsWith('$') && !KNOWN_GROUPS.has(name)) {

@@ -23,7 +23,13 @@ export const theme = {
     "warning": "#FFB020",
     "error": "#FF5C5C",
     "border": "#2A2C34",
-    "scrim": "#0D0E11CC"
+    "scrim": "#0D0E11CC",
+    "glass": {
+      "fill": "#FFFFFF1A",
+      "activePill": "#FFFFFF24",
+      "fillLight": "#FFFFFFB3",
+      "activePillLight": "#0D0E111F"
+    }
   },
   "spacing": {
     "xs": 4,
@@ -132,6 +138,39 @@ export const theme = {
       "lineHeight": 20,
       "letterSpacing": 0.5,
       "fontVariationSettings": "'wght' 600, 'wdth' 90, 'opsz' 16"
+    }
+  },
+  "glass": {
+    "blur": 28,
+    "specular": {
+      "shadowColor": "#FFFFFF40",
+      "shadowOffset": {
+        "width": 0,
+        "height": 1
+      },
+      "shadowOpacity": 1,
+      "shadowRadius": 0,
+      "elevation": 1
+    },
+    "innerDepth": {
+      "shadowColor": "#00000033",
+      "shadowOffset": {
+        "width": 0,
+        "height": -1
+      },
+      "shadowOpacity": 1,
+      "shadowRadius": 1,
+      "elevation": 1
+    },
+    "shadow": {
+      "shadowColor": "#00000059",
+      "shadowOffset": {
+        "width": 0,
+        "height": 8
+      },
+      "shadowOpacity": 1,
+      "shadowRadius": 12,
+      "elevation": 12
     }
   }
 } as const;
