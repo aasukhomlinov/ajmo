@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
 import { queryClient } from '@/lib/queryClient';
+import { theme } from '@/lib/theme';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -26,8 +27,13 @@ export default function RootLayout() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <Stack screenOptions={{ headerShown: false }} />
-      <StatusBar style="auto" />
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: { backgroundColor: theme.colors.bg },
+        }}
+      />
+      <StatusBar style="light" />
     </QueryClientProvider>
   );
 }

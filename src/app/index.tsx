@@ -1,11 +1,20 @@
-import { StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
+import { StyleSheet, View } from 'react-native';
 
-import { fonts } from '@/lib/fonts';
+import { theme } from '@/lib/theme';
+import { Button, Text } from '@/ui';
 
 export default function HomeScreen() {
+  const router = useRouter();
   return (
     <View style={styles.container}>
-      <Text style={styles.placeholder}>ajmo</Text>
+      <Text variant="display">ajmo</Text>
+      {/* Temporary dev entry — remove once navigation/tab bar is wired. */}
+      <Button
+        label="Event reminders"
+        type="secondary"
+        onPress={() => router.push('/reminders')}
+      />
     </View>
   );
 }
@@ -15,9 +24,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  placeholder: {
-    fontFamily: fonts.sans,
-    fontSize: 24,
+    backgroundColor: theme.colors.bg,
+    gap: theme.spacing['2xl'],
   },
 });
