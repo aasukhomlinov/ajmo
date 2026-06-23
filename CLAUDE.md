@@ -67,8 +67,14 @@ edge, lime date chip. Moderate radii (12-16) — street, not bubbly.
 TabBar = native Liquid Glass. On iOS implement with Expo native tabs
 (system glass), Android gets a visually matching custom bar with blur
 fallback. Tabs: Discover (Compass), Saved (BookmarkSimple), Profile (User).
-Glass constants (Figma can't fully bind them): `glass` group in
+Active state is NEUTRAL, per DS node 58:21 — a frosted pill behind a
+Fill-weight glyph (text/primary on dark), outline + text/secondary when idle;
+icon-only, NO labels, and NO lime (lime stays reserved for CTAs/badges; do not
+tint the bar). Glass constants (Figma can't fully bind them): `glass` group in
 design-tokens.json + Figma vars color/glass/* + effect style Glass/Bar.
+iOS note: the native bar can't render Phosphor SVG components, so it consumes
+template PNGs rasterized from the same Phosphor glyphs (assets/tab-icons/, via
+`npm run generate-tab-icons`); Android uses the live Phosphor components.
 
 Figma files (TWO):
 - DS (tokens + components): H5mzFcoh4EbVAkhNGFRJEx ("ajmo DS") — get_design_context

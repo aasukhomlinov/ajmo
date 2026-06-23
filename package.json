@@ -45,7 +45,8 @@
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
     "generate-theme": "node scripts/generate-theme.mts",
-    "generate-fonts": "python3 scripts/build-fonts.py"
+    "generate-fonts": "python3 scripts/build-fonts.py",
+    "generate-tab-icons": "node scripts/build-tab-icons.mts"
   },
   "private": true
 }
