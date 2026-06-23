@@ -9,11 +9,16 @@ export default function HomeScreen() {
   return (
     <View style={styles.container}>
       <Text variant="display">ajmo</Text>
-      {/* Temporary dev entry — remove once navigation/tab bar is wired. */}
+      {/* Temporary dev entries — remove once navigation/tab bar is wired. */}
       <Button
         label="Event reminders"
         type="secondary"
         onPress={() => router.push('/reminders')}
+      />
+      <Button
+        label="UI Gallery"
+        type="text"
+        onPress={() => router.push('/gallery')}
       />
     </View>
   );
