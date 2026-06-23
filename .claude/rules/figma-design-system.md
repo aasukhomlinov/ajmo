@@ -118,6 +118,24 @@ Chip = interactive filter (Default/Active); Badge = non-interactive label (Tone)
 Skeletons, ListRow, ListSectionHeader, PageDots, Divider, Screen and Carousel
 are now built (see `src/ui/`).
 
+## Event Detail: LocationPreview (pattern, not a primitive)
+
+There is **no `MapPin` primitive** (the only map in MVP is a static snippet — see
+CLAUDE.md). `phosphor-react-native`'s `MapPin` icon is still used inline (e.g. in
+EventRow/EventCard meta) — that's just an icon, not a component.
+
+The Event Detail screen will instead get a **LocationPreview PATTERN**, built in
+the screen phase (NOT now, NOT a `src/ui/` primitive):
+- a static map image (rendered tile / static-maps URL) with a Phosphor `MapPin`
+  icon overlaid as the pin;
+- tapping opens an external maps app **chosen by the user** (Apple / Google /
+  Yandex) via `expo-linking` (`Linking.openURL`).
+- TODO (screen phase): opening third-party maps requires declaring their URL
+  schemes in `app.json` → `ios.infoPlist.LSApplicationQueriesSchemes`
+  (e.g. `comgooglemaps`, `yandexmaps`) before `canOpenURL` will work on iOS.
+
+Do not build LocationPreview now.
+
 ## TabBar note
 
 TabBar is approved native Liquid Glass — iOS via Expo native tabs (system glass),

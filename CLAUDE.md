@@ -94,7 +94,7 @@ Figma files (TWO):
 ## Code conventions
 - src/ui/        → primitives mirroring the DS (AppText, Button, IconButton,
   Chip, Input, EventCard, EventRow, EventCardSkeleton, EventRowSkeleton,
-  TabBar, ListRow, ListSectionHeader, EmptyState, Badge, MapPin, Toast, Radio,
+  TabBar, ListRow, ListSectionHeader, EmptyState, Badge, Toast, Radio,
   Checkbox, Header, Carousel, PageDots, Screen, Divider)
 - src/features/  → discover, search, event, saved, profile, auth, city
   (screen + hooks + api per feature). NO "map" feature.
