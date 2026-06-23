@@ -85,68 +85,52 @@ export const theme = {
   "typography": {
     "display": {
       "fontSize": 34,
-      "fontFamily": "TikTokSans",
-      "fontWeight": "800",
+      "fontFamily": "TikTokSans-Display",
       "lineHeight": 40,
-      "letterSpacing": -0.5,
-      "fontVariationSettings": "'wght' 800, 'wdth' 125, 'opsz' 36"
+      "letterSpacing": -0.5
     },
     "h1": {
       "fontSize": 26,
-      "fontFamily": "TikTokSans",
-      "fontWeight": "800",
+      "fontFamily": "TikTokSans-H1",
       "lineHeight": 32,
-      "letterSpacing": -0.25,
-      "fontVariationSettings": "'wght' 800, 'wdth' 120, 'opsz' 28"
+      "letterSpacing": -0.25
     },
     "h2": {
       "fontSize": 20,
-      "fontFamily": "TikTokSans",
-      "fontWeight": "700",
+      "fontFamily": "TikTokSans-H2",
       "lineHeight": 26,
-      "letterSpacing": 0,
-      "fontVariationSettings": "'wght' 700, 'wdth' 110, 'opsz' 22"
+      "letterSpacing": 0
     },
     "body": {
       "fontSize": 16,
-      "fontFamily": "TikTokSans",
-      "fontWeight": "400",
+      "fontFamily": "TikTokSans-Body",
       "lineHeight": 24,
-      "letterSpacing": 0,
-      "fontVariationSettings": "'wght' 400, 'wdth' 100, 'opsz' 16"
+      "letterSpacing": 0
     },
     "bodySmall": {
       "fontSize": 14,
-      "fontFamily": "TikTokSans",
-      "fontWeight": "400",
+      "fontFamily": "TikTokSans-Body",
       "lineHeight": 20,
-      "letterSpacing": 0,
-      "fontVariationSettings": "'wght' 400, 'wdth' 100, 'opsz' 14"
+      "letterSpacing": 0
     },
     "caption": {
       "fontSize": 12,
-      "fontFamily": "TikTokSans",
-      "fontWeight": "500",
+      "fontFamily": "TikTokSans-Caption",
       "lineHeight": 16,
-      "letterSpacing": 0.5,
-      "fontVariationSettings": "'wght' 500, 'wdth' 85, 'opsz' 12"
+      "letterSpacing": 0.5
     },
     "button": {
       "fontSize": 16,
-      "fontFamily": "TikTokSans",
-      "fontWeight": "600",
+      "fontFamily": "TikTokSans-Button",
       "lineHeight": 20,
-      "letterSpacing": 0.5,
-      "fontVariationSettings": "'wght' 600, 'wdth' 90, 'opsz' 16"
+      "letterSpacing": 0.5
     },
     "sectionHeader": {
       "fontSize": 12,
-      "fontFamily": "TikTokSans",
-      "fontWeight": "700",
+      "fontFamily": "TikTokSans-Section",
       "lineHeight": 16,
       "letterSpacing": 1,
-      "textTransform": "uppercase",
-      "fontVariationSettings": "'wght' 700, 'wdth' 90, 'opsz' 12"
+      "textTransform": "uppercase"
     }
   },
   "glass": {

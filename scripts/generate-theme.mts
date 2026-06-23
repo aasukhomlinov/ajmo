@@ -148,6 +148,22 @@ const TEXT_CASE: Record<string, string> = {
   none: 'none',
 };
 
+// Each preset renders through a STATIC cut instanced from the variable master
+// (scripts/build-fonts.py) — RN can't drive wght/wdth/opsz at runtime. Weight
+// and width are baked into the face, so we emit only the family name here (no
+// fontWeight: it would make Android faux-bold an already-bold cut). Keep this
+// map in sync with CUTS in build-fonts.py; bodySmall reuses the Body cut.
+const CUT_FAMILY: Record<string, string> = {
+  display: 'TikTokSans-Display',
+  h1: 'TikTokSans-H1',
+  h2: 'TikTokSans-H2',
+  body: 'TikTokSans-Body',
+  bodySmall: 'TikTokSans-Body',
+  caption: 'TikTokSans-Caption',
+  button: 'TikTokSans-Button',
+  sectionHeader: 'TikTokSans-Section',
+};
+
 // W3C typography -> React Native TextStyle preset.
 function toTypography(value: unknown, tokenPath: string) {
   if (typeof value !== 'object' || value === null) {
@@ -155,11 +171,14 @@ function toTypography(value: unknown, tokenPath: string) {
   }
   const t = value as Record<string, unknown>;
   const fontSize = toNumber(t.fontSize, `${tokenPath}.fontSize`);
-  const preset: Record<string, unknown> = { fontSize };
-  if (t.fontFamily !== undefined) {
-    preset.fontFamily = Array.isArray(t.fontFamily) ? t.fontFamily[0] : t.fontFamily;
+  const fontFamily = CUT_FAMILY[tokenPath];
+  if (!fontFamily) {
+    throw new Error(
+      `${tokenPath}: no static cut mapped. Add it to CUT_FAMILY (here) and to ` +
+        `CUTS in scripts/build-fonts.py, then run: npm run generate-fonts`,
+    );
   }
-  if (t.fontWeight !== undefined) preset.fontWeight = String(t.fontWeight);
+  const preset: Record<string, unknown> = { fontSize, fontFamily };
   if (t.lineHeight !== undefined) {
     // Unitless lineHeight is a multiplier; RN wants absolute px.
     const lh = t.lineHeight;
@@ -176,11 +195,8 @@ function toTypography(value: unknown, tokenPath: string) {
     }
     preset.textTransform = transform;
   }
-  // Variable-font axes (TikTok Sans: wght/wdth/opsz) -> RN fontVariationSettings.
-  const axes = (['wght', 'wdth', 'opsz'] as const)
-    .filter((axis) => t[axis] !== undefined)
-    .map((axis) => `'${axis}' ${toNumber(t[axis], `${tokenPath}.${axis}`)}`);
-  if (axes.length > 0) preset.fontVariationSettings = axes.join(', ');
+  // Variable-font axes (wght/wdth/opsz) are baked into the static cut, not
+  // emitted: RN ignores fontVariationSettings, and the family carries them.
   return preset;
 }
 
