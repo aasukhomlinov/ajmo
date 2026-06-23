@@ -1,3 +1,4 @@
+import type { Icon } from 'phosphor-react-native';
 import { Pressable, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
 
 import { theme } from '@/lib/theme';
@@ -6,8 +7,12 @@ import { Text } from './Text';
 
 // Afiša direction CTA. Uppercase condensed label, radius/md, 44px tall.
 // Type: Primary (lime) / Secondary (hairline outline) / Text (bare lime).
+// Optional left/right Phosphor icons (DS ShowLeftIcon/ShowRightIcon swaps) are
+// sized to 20 and auto-tinted to the label color.
 // Figma's Pressed/Disabled states map to RN runtime states (Pressable + disabled).
 export type ButtonType = 'primary' | 'secondary' | 'text';
+
+const ICON_SIZE = 20;
 
 const labelColors: Record<ButtonType, string> = {
   primary: theme.colors.text.onAccent,
@@ -18,6 +23,10 @@ const labelColors: Record<ButtonType, string> = {
 export interface ButtonProps {
   label: string;
   type?: ButtonType;
+  /** Phosphor icon rendered before the label (20px, tinted to the label color). */
+  leftIcon?: Icon;
+  /** Phosphor icon rendered after the label (20px, tinted to the label color). */
+  rightIcon?: Icon;
   onPress?: () => void;
   disabled?: boolean;
   fullWidth?: boolean;
@@ -27,11 +36,14 @@ export interface ButtonProps {
 export function Button({
   label,
   type = 'primary',
+  leftIcon: LeftIcon,
+  rightIcon: RightIcon,
   onPress,
   disabled = false,
   fullWidth = false,
   style,
 }: ButtonProps) {
+  const contentColor = labelColors[type];
   return (
     <Pressable
       onPress={onPress}
@@ -47,9 +59,11 @@ export function Button({
         style,
       ]}
     >
-      <Text variant="button" color={labelColors[type]} style={styles.label} numberOfLines={1}>
+      {LeftIcon ? <LeftIcon size={ICON_SIZE} color={contentColor} /> : null}
+      <Text variant="button" color={contentColor} style={styles.label} numberOfLines={1}>
         {label}
       </Text>
+      {RightIcon ? <RightIcon size={ICON_SIZE} color={contentColor} /> : null}
     </Pressable>
   );
 }
