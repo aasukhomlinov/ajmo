@@ -110,11 +110,13 @@ When the Figma node is one of these, render OUR component — do not re-derive m
 | Toast | `86:18` | `@/ui/Toast` → `Toast` | `message, tone?: 'info'\|'success'\|'error', actionLabel?, onAction?` |
 | Input | `72:22` | `@/ui/Input` → `Input` | `value?, onChangeText?, placeholder?, leftIcon?, rightIcon?, type?: 'text'\|'dropdown', error?, disabled?, onPress?` (search field = type `text` + MagnifyingGlass left) |
 | EmptyState | `67:3` | `@/ui/EmptyState` → `EmptyState` | `title, description?, icon?, actionLabel?, onAction?` |
+| Carousel | (DS node not resolvable via MCP page-lister) | `@/ui/Carousel` → `Carousel` | `images: string[], aspectRatio?: number (default 4:5), initialIndex?, onIndexChange?` (event-detail cover gallery: horizontal paging of edge-to-edge posters + lime PageDots. There is no separate "Hero" — Carousel IS the event-detail hero. Screen-level top scrim + back/like/share IconButtons are overlaid by the screen, not the primitive.) |
 
 Still to build: **TabBar** (`58:21`, native Liquid Glass — see note below), plus
-DropdownItem/DropdownMenu, ListRow, BottomSheet, Carousel, DateStrip/DayCell,
-MapPin marker, ListSectionHeader, Skeletons (build on demand).
+DropdownItem/DropdownMenu, BottomSheet, DateStrip/DayCell (build on demand).
 Chip = interactive filter (Default/Active); Badge = non-interactive label (Tone).
+Skeletons, ListRow, ListSectionHeader, PageDots, Divider, Screen and Carousel
+are now built (see `src/ui/`).
 
 ## TabBar note
 

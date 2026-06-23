@@ -95,7 +95,7 @@ Figma files (TWO):
 - src/ui/        → primitives mirroring the DS (AppText, Button, IconButton,
   Chip, Input, EventCard, EventRow, EventCardSkeleton, EventRowSkeleton,
   TabBar, ListRow, ListSectionHeader, EmptyState, Badge, MapPin, Toast, Radio,
-  Checkbox, Header, Hero, PageDots, Screen, Divider)
+  Checkbox, Header, Carousel, PageDots, Screen, Divider)
 - src/features/  → discover, search, event, saved, profile, auth, city
   (screen + hooks + api per feature). NO "map" feature.
   (EventCard/EventRow live under discover/ — see the component registry.)
