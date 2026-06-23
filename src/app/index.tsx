@@ -9,7 +9,8 @@ export default function HomeScreen() {
   return (
     <View style={styles.container}>
       <Text variant="display">ajmo</Text>
-      {/* Temporary dev entries — remove once navigation/tab bar is wired. */}
+      {/* Temporary dev entries — remove once the auth gate becomes the entry point. */}
+      <Button label="Open app (tabs)" onPress={() => router.push('/discover')} />
       <Button
         label="Event reminders"
         type="secondary"
