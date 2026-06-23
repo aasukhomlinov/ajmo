@@ -96,9 +96,9 @@ Figma files (TWO):
   Chip, Input, EventCard, EventRow, EventCardSkeleton, EventRowSkeleton,
   TabBar, ListRow, ListSectionHeader, EmptyState, Badge, MapPin, Toast, Radio,
   Checkbox, Header, Hero, PageDots, Screen, Divider)
-- src/features/  → feed (the Discover feed), search, event, saved, settings,
-  auth, city (screen + hooks + api per feature). NO "map" feature.
-  (EventCard/EventRow live under feed/ — see the component registry.)
+- src/features/  → discover, search, event, saved, profile, auth, city
+  (screen + hooks + api per feature). NO "map" feature.
+  (EventCard/EventRow live under discover/ — see the component registry.)
 - src/lib/       → supabase client, query client, theme, mocks, utils
 - supabase/      → migrations, functions (parsers, send-reminders)
 - All colors/spacing/typography ONLY via theme tokens (src/lib/theme.ts,

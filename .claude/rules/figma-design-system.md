@@ -33,9 +33,9 @@ React Native + Expo primitives and theme tokens.
   `SegmentedControl`, `Toggle`, `Checkbox`, `Radio`, `Header`, `Toast`, `Input`,
   `EmptyState`. TabBar is still pending (native Liquid Glass — see note below).
   Other DS components are built on demand.
-- Composed / feature components → `src/features/<feature>/` (feed, search, event,
-  saved, settings, auth, city — NO map feature). `EventCard` lives in
-  `src/features/feed/EventCard.tsx`.
+- Composed / feature components → `src/features/<feature>/` (discover, search,
+  event, saved, profile, auth, city — NO map feature). `EventCard` lives in
+  `src/features/discover/EventCard.tsx`.
 - IMPORTANT: place a component where its Figma component **description** says (each
   DS component description carries a `RN: <path>` line). Don't put composed cards in
   `src/ui/`.
@@ -95,8 +95,8 @@ When the Figma node is one of these, render OUR component — do not re-derive m
 
 | Figma component | Node | Code | Key props |
 |---|---|---|---|
-| EventCard | `100:83` | `@/features/feed/EventCard` → `EventCard` | `title, venue, time, price, dateLabel?, category?, imageUrl?, state?: 'default'\|'going', onPress?, onToggleGoing?` |
-| EventRow | `90:3` | `@/features/feed/EventRow` → `EventRow` | `title, venue, date, imageUrl?, badge?: { label, tone? }, onPress?` |
+| EventCard | `100:83` | `@/features/discover/EventCard` → `EventCard` | `title, venue, time, price, dateLabel?, category?, imageUrl?, state?: 'default'\|'going', onPress?, onToggleGoing?` |
+| EventRow | `90:3` | `@/features/discover/EventRow` → `EventRow` | `title, venue, date, imageUrl?, badge?: { label, tone? }, onPress?` |
 | Cover | `82:6` | `@/ui/Cover` → `Cover` | `imageUrl?, ratio?: '16:10'\|'16:9'\|'4:3'\|'1:1', showScrim?, showDateChip?, dateLabel?, showBadge?, categoryLabel?, borderRadius?` |
 | Button | `51:2` | `@/ui/Button` → `Button` | `label, type?: 'primary'\|'secondary'\|'text', onPress?, disabled?, fullWidth?` (Figma State Pressed/Disabled → Pressable + `disabled`) |
 | Badge | `79:13` | `@/ui/Badge` → `Badge` | `label, tone?: 'neutral'\|'accent'\|'success'\|'warning'\|'error'` |

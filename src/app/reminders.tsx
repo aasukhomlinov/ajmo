@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 
-import { RemindersScreen } from '@/features/settings/RemindersScreen';
+import { RemindersScreen } from '@/features/profile/RemindersScreen';
 
 export default function RemindersRoute() {
   const router = useRouter();
