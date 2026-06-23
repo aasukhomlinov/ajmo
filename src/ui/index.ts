@@ -13,6 +13,7 @@ export {
   type SegmentedControlProps,
   type SegmentItem,
 } from './SegmentedControl';
+export { Skeleton, EventCardSkeleton, EventRowSkeleton, type SkeletonProps } from './Skeleton';
 export { Text, type TextProps, type TextVariant } from './Text';
 export { Toast, type ToastProps, type ToastTone } from './Toast';
 export { Toggle, type ToggleProps } from './Toggle';
