@@ -138,6 +138,15 @@ export const theme = {
       "lineHeight": 20,
       "letterSpacing": 0.5,
       "fontVariationSettings": "'wght' 600, 'wdth' 90, 'opsz' 16"
+    },
+    "sectionHeader": {
+      "fontSize": 12,
+      "fontFamily": "TikTokSans",
+      "fontWeight": "700",
+      "lineHeight": 16,
+      "letterSpacing": 1,
+      "textTransform": "uppercase",
+      "fontVariationSettings": "'wght' 700, 'wdth' 90, 'opsz' 12"
     }
   },
   "glass": {

@@ -21,6 +21,8 @@ for (const variant of Object.keys(theme.typography) as TextVariant[]) {
     fontWeight: preset.fontWeight,
     lineHeight: preset.lineHeight,
     letterSpacing: preset.letterSpacing,
+    // Some presets bake text case (e.g. sectionHeader -> uppercase).
+    ...('textTransform' in preset ? { textTransform: preset.textTransform } : null),
   };
 }
 

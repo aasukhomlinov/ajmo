@@ -136,6 +136,18 @@ function toShadow(value: unknown, tokenPath: string) {
   };
 }
 
+// Token textCase -> RN textTransform. Baking case into the preset lets a variant
+// (e.g. sectionHeader) render uppercase without a per-call-site override.
+const TEXT_CASE: Record<string, string> = {
+  upper: 'uppercase',
+  uppercase: 'uppercase',
+  lower: 'lowercase',
+  lowercase: 'lowercase',
+  title: 'capitalize',
+  capitalize: 'capitalize',
+  none: 'none',
+};
+
 // W3C typography -> React Native TextStyle preset.
 function toTypography(value: unknown, tokenPath: string) {
   if (typeof value !== 'object' || value === null) {
@@ -156,6 +168,13 @@ function toTypography(value: unknown, tokenPath: string) {
   }
   if (t.letterSpacing !== undefined) {
     preset.letterSpacing = toNumber(t.letterSpacing, `${tokenPath}.letterSpacing`);
+  }
+  if (t.textCase !== undefined) {
+    const transform = TEXT_CASE[String(t.textCase).toLowerCase()];
+    if (!transform) {
+      throw new Error(`${tokenPath}.textCase: unsupported value "${String(t.textCase)}"`);
+    }
+    preset.textTransform = transform;
   }
   // Variable-font axes (TikTok Sans: wght/wdth/opsz) -> RN fontVariationSettings.
   const axes = (['wght', 'wdth', 'opsz'] as const)

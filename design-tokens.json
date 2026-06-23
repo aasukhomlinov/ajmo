@@ -282,6 +282,21 @@
         "opsz": 16
       },
       "$description": "Condensed semibold, uppercase in components"
+    },
+    "sectionHeader": {
+      "$type": "typography",
+      "$value": {
+        "fontFamily": "TikTokSans",
+        "fontSize": "12px",
+        "lineHeight": "16px",
+        "fontWeight": 700,
+        "letterSpacing": "1px",
+        "wght": 700,
+        "wdth": 90,
+        "opsz": 12,
+        "textCase": "uppercase"
+      },
+      "$description": "List section header: condensed bold, uppercase baked into the style"
     }
   }
 }
