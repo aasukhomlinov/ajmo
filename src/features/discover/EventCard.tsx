@@ -1,19 +1,19 @@
-import { Clock, MapPin, Ticket } from 'phosphor-react-native';
+import { Check, Clock, MapPin, Plus, Ticket } from 'phosphor-react-native';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { theme } from '@/lib/theme';
-import { Button } from '@/ui/Button';
 import { Cover } from '@/ui/Cover';
+import { IconButton } from '@/ui/IconButton';
 import { Text } from '@/ui/Text';
 
 // Event feed card — composes Cover (16:10, lime date Badge + neutral category
-// Badge) + Phosphor meta icons + a full-width Button CTA. The body overlaps the
-// cover by 28px so the title reads over the scrim. State: Default (Secondary
-// "I'm going") / Going (Primary lime "Going").
+// Badge) + Phosphor meta icons. The body overlaps the cover by 28px so the wide
+// title reads over the scrim. A single save control (per CLAUDE.md: one "+"
+// bookmark, no "going"/"like") sits beside the title: outline Plus by default,
+// lime-filled Check once saved.
 const TITLE_OVERLAP = 28;
 const META_ICON_SIZE = 16;
-
-export type EventCardState = 'default' | 'going';
+const SAVE_ICON_SIZE = 24;
 
 export interface EventCardProps {
   title: string;
@@ -23,9 +23,9 @@ export interface EventCardProps {
   dateLabel?: string;
   category?: string;
   imageUrl?: string;
-  state?: EventCardState;
+  saved?: boolean;
   onPress?: () => void;
-  onToggleGoing?: () => void;
+  onToggleSave?: () => void;
 }
 
 export function EventCard({
@@ -36,12 +36,10 @@ export function EventCard({
   dateLabel,
   category,
   imageUrl,
-  state = 'default',
+  saved = false,
   onPress,
-  onToggleGoing,
+  onToggleSave,
 }: EventCardProps) {
-  const going = state === 'going';
-
   return (
     <Pressable style={styles.card} onPress={onPress} accessibilityRole="button">
       <Cover
@@ -53,46 +51,50 @@ export function EventCard({
       />
 
       <View style={styles.body}>
-        <View style={styles.content}>
-          <Text variant="h1" numberOfLines={2}>
+        <View style={styles.titleRow}>
+          <Text variant="h1" style={styles.flex} numberOfLines={2}>
             {title}
           </Text>
-
-          <View style={styles.row}>
-            <MapPin size={META_ICON_SIZE} color={theme.colors.text.secondary} />
-            <Text
-              variant="bodySmall"
-              color={theme.colors.text.secondary}
-              style={styles.flex}
-              numberOfLines={1}
-            >
-              {venue}
-            </Text>
-          </View>
-
-          <View style={styles.meta}>
-            <View style={styles.row}>
-              <Clock size={META_ICON_SIZE} color={theme.colors.text.secondary} />
-              <Text variant="bodySmall" color={theme.colors.text.secondary}>
-                {time}
-              </Text>
-            </View>
-            <View style={styles.row}>
-              <Ticket size={META_ICON_SIZE} color={theme.colors.text.secondary} />
-              <Text variant="bodySmall" color={theme.colors.text.primary}>
-                {price}
-              </Text>
-            </View>
-          </View>
+          <IconButton
+            icon={
+              saved ? (
+                <Check size={SAVE_ICON_SIZE} weight="bold" color={theme.colors.text.onAccent} />
+              ) : (
+                <Plus size={SAVE_ICON_SIZE} color={theme.colors.text.primary} />
+              )
+            }
+            variant="surface"
+            onPress={onToggleSave}
+            accessibilityLabel={saved ? 'Saved — tap to remove' : 'Save event'}
+            style={saved ? styles.saveActive : undefined}
+          />
         </View>
 
-        <View style={styles.footer}>
-          <Button
-            label={going ? 'GOING' : "I'M GOING"}
-            type={going ? 'primary' : 'secondary'}
-            fullWidth
-            onPress={onToggleGoing}
-          />
+        <View style={styles.row}>
+          <MapPin size={META_ICON_SIZE} color={theme.colors.text.secondary} />
+          <Text
+            variant="bodySmall"
+            color={theme.colors.text.secondary}
+            style={styles.flex}
+            numberOfLines={1}
+          >
+            {venue}
+          </Text>
+        </View>
+
+        <View style={styles.meta}>
+          <View style={styles.row}>
+            <Clock size={META_ICON_SIZE} color={theme.colors.text.secondary} />
+            <Text variant="bodySmall" color={theme.colors.text.secondary}>
+              {time}
+            </Text>
+          </View>
+          <View style={styles.row}>
+            <Ticket size={META_ICON_SIZE} color={theme.colors.text.secondary} />
+            <Text variant="bodySmall" color={theme.colors.text.primary}>
+              {price}
+            </Text>
+          </View>
         </View>
       </View>
     </Pressable>
@@ -112,12 +114,18 @@ const styles = StyleSheet.create({
     marginBottom: -TITLE_OVERLAP,
   },
   body: {
-    width: '100%',
-  },
-  content: {
     gap: theme.spacing.sm,
     paddingHorizontal: theme.spacing.lg,
-    paddingBottom: theme.spacing.md,
+    paddingBottom: theme.spacing.lg,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: theme.spacing.md,
+  },
+  saveActive: {
+    backgroundColor: theme.colors.accent.base,
+    borderColor: 'transparent',
   },
   row: {
     flexDirection: 'row',
@@ -131,10 +139,5 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.spacing.md,
-  },
-  footer: {
-    paddingHorizontal: theme.spacing.lg,
-    paddingTop: theme.spacing.sm,
-    paddingBottom: theme.spacing.lg,
   },
 });

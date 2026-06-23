@@ -95,7 +95,7 @@ When the Figma node is one of these, render OUR component — do not re-derive m
 
 | Figma component | Node | Code | Key props |
 |---|---|---|---|
-| EventCard | `100:83` | `@/features/discover/EventCard` → `EventCard` | `title, venue, time, price, dateLabel?, category?, imageUrl?, state?: 'default'\|'going', onPress?, onToggleGoing?` |
+| EventCard | `100:83` | `@/features/discover/EventCard` → `EventCard` | `title, venue, time, price, dateLabel?, category?, imageUrl?, saved?: boolean, onPress?, onToggleSave?` (single save "+" → lime Check when saved; no "going"/like per CLAUDE.md. DS node 100:83 still draws the legacy "I'm going" CTA — code intentionally supersedes it.) |
 | EventRow | `90:3` | `@/features/discover/EventRow` → `EventRow` | `title, venue, date, imageUrl?, badge?: { label, tone? }, onPress?` |
 | Cover | `82:6` | `@/ui/Cover` → `Cover` | `imageUrl?, ratio?: '16:10'\|'16:9'\|'4:3'\|'1:1', showScrim?, showDateChip?, dateLabel?, showBadge?, categoryLabel?, borderRadius?` |
 | Button | `51:2` | `@/ui/Button` → `Button` | `label, type?: 'primary'\|'secondary'\|'text', onPress?, disabled?, fullWidth?` (Figma State Pressed/Disabled → Pressable + `disabled`) |
