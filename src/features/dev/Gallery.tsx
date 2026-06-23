@@ -46,7 +46,9 @@ import {
 // DEV-ONLY acceptance gallery — every live primitive in each state/variant,
 // grouped foundations → inputs/actions → content → feedback/structure. Reached
 // via the dev link on the home screen. SegmentedControl is intentionally
-// excluded (unused in MVP); TabBar shows a deferred placeholder (native session).
+// excluded (unused in MVP); TabBar is NOT mocked here — it's live in the real
+// (tabs) layout (iOS system glass / Android custom blur bar), reachable via
+// "Open app (tabs)" on the home screen.
 
 const SAMPLE_IMAGES = [
   'https://picsum.photos/seed/ajmo-1/800/1000',
@@ -388,10 +390,12 @@ export function Gallery({ onBack }: GalleryProps) {
         </Text>
       </Section>
 
-      <Section title="Deferred · TabBar">
+      <Section title="TabBar · live in (tabs)">
         <View style={styles.tabbarPlaceholder}>
-          <Text variant="button" color={theme.colors.text.secondary} style={styles.upper}>
-            TabBar — deferred (native Liquid Glass session)
+          <Text variant="bodySmall" color={theme.colors.text.secondary}>
+            Not mocked here — TabBar is the real navigation chrome. iOS renders the
+            native Liquid Glass bar; Android/web use the matching custom blur bar.
+            Open it via “Open app (tabs)” on the home screen.
           </Text>
         </View>
       </Section>
@@ -494,8 +498,5 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
     borderStyle: 'dashed',
     backgroundColor: theme.colors.surface.raised,
-  },
-  upper: {
-    textTransform: 'uppercase',
   },
 });
