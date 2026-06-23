@@ -1,3 +1,4 @@
+// UNUSED in MVP — kept for future use, not wired to any screen.
 import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
