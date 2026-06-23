@@ -44,3 +44,8 @@ example
 
 # local env
 .env
+
+# scratch / machine-local
+.fig-tmp/
+ajmo-main/
+.claude/settings.local.json
