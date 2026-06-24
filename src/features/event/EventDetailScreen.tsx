@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import {
   ArrowLeft,
-  ArrowSquareOut,
+  ArrowUpRight,
   CalendarBlank,
   Check,
   MapPin,
@@ -17,7 +17,7 @@ import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 import { detailDateLabel, timeLabel } from '@/lib/datetime';
 import { theme } from '@/lib/theme';
 import type { Event } from '@/lib/types';
-import { Badge, Button, Carousel, Divider, IconButton, Screen, Text } from '@/ui';
+import { Badge, Button, Carousel, Divider, IconButton, PageDots, Screen, Text } from '@/ui';
 
 import { categoryLabel } from '../discover/categories';
 import { LocationPreview } from './LocationPreview';
@@ -25,10 +25,11 @@ import { LocationPreview } from './LocationPreview';
 // Event Detail (app frame 152:178). Full-bleed 4:5 Carousel cover (paginates +
 // shows dots when the event has multiple covers) with a soft bottom scrim and a
 // top scrim; overlaid cover chrome = back (top-left) + Share (top-right). A
-// scrolling body (heading, meta, about, location) and a pinned action bar whose
-// primary outbound action is Open-in-browser (the event's web page) next to the
-// single local Save (+ → lime Check). No backend here — save is local, Share is
-// the native sheet, browser/maps are external links.
+// scrolling body (heading, meta, about, location) and a pinned action bar: the
+// primary CTA is the single local Save (wide lime Button, + → Check) with a
+// secondary Open-in-browser icon button (ArrowUpRight → the event's web page) to
+// its right. No backend here — save is local, Share is the native sheet,
+// browser/maps are external links.
 const HERO_RATIO = 4 / 5;
 const META_ICON = 20;
 const ACTION_ICON = 24;
@@ -41,6 +42,7 @@ export function EventDetailScreen({ event }: EventDetailScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const [saved, setSaved] = useState(false);
+  const [coverIndex, setCoverIndex] = useState(0);
 
   const onShare = useCallback(() => {
     void Share.share({
@@ -64,7 +66,12 @@ export function EventDetailScreen({ event }: EventDetailScreenProps) {
         {/* Hero — Carousel of the event's covers. One cover renders without page
             dots; multiple covers paginate + show lime dots. */}
         <View style={styles.hero}>
-          <Carousel images={covers} aspectRatio={HERO_RATIO} />
+          <Carousel
+            images={covers}
+            aspectRatio={HERO_RATIO}
+            showDots={false}
+            onIndexChange={setCoverIndex}
+          />
 
           <View style={styles.bottomScrim} pointerEvents="none">
             <Svg width="100%" height="100%" preserveAspectRatio="none">
@@ -108,6 +115,14 @@ export function EventDetailScreen({ event }: EventDetailScreenProps) {
               accessibilityLabel="Share event"
             />
           </View>
+
+          {/* Page dots — drawn at the screen level ABOVE the bottom scrim (which
+              would otherwise hide the Carousel's own dots), tracking swipes. */}
+          {covers.length > 1 ? (
+            <View style={styles.dots} pointerEvents="none">
+              <PageDots count={covers.length} activeIndex={coverIndex} />
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.body}>
@@ -165,27 +180,20 @@ export function EventDetailScreen({ event }: EventDetailScreenProps) {
         </View>
       </ScrollView>
 
-      {/* Action bar — Open in browser (primary outbound) + single local Save */}
+      {/* Action bar — single local Save (primary, wide) + Open-in-browser icon */}
       <View style={[styles.actionBar, { paddingBottom: insets.bottom + theme.spacing.sm }]}>
         <Button
-          label="Open in browser"
+          label={saved ? 'Saved' : 'Save'}
           type="primary"
-          leftIcon={ArrowSquareOut}
-          onPress={onOpenBrowser}
-          style={styles.browserButton}
+          leftIcon={saved ? Check : Plus}
+          onPress={() => setSaved((prev) => !prev)}
+          style={styles.saveButton}
         />
         <IconButton
-          icon={
-            saved ? (
-              <Check size={ACTION_ICON} weight="bold" color={theme.colors.text.onAccent} />
-            ) : (
-              <Plus size={ACTION_ICON} color={theme.colors.text.primary} />
-            )
-          }
+          icon={<ArrowUpRight size={ACTION_ICON} color={theme.colors.text.primary} />}
           variant="surface"
-          style={saved ? styles.saveActive : undefined}
-          onPress={() => setSaved((prev) => !prev)}
-          accessibilityLabel={saved ? 'Saved — tap to remove' : 'Save event'}
+          onPress={onOpenBrowser}
+          accessibilityLabel="Open event page in browser"
         />
       </View>
     </Screen>
@@ -261,11 +269,14 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing.sm,
     backgroundColor: theme.colors.bg,
   },
-  browserButton: {
+  saveButton: {
     flex: 1,
   },
-  saveActive: {
-    backgroundColor: theme.colors.accent.base,
-    borderColor: 'transparent',
+  dots: {
+    position: 'absolute',
+    bottom: theme.spacing.lg,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
   },
 });

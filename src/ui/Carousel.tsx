@@ -33,6 +33,12 @@ export interface CarouselProps {
   aspectRatio?: number;
   initialIndex?: number;
   onIndexChange?: (index: number) => void;
+  /**
+   * Render the built-in PageDots overlay (bottom-center) when there's >1 slide.
+   * Defaults to true. Set false to render dots yourself — e.g. the Event Detail
+   * screen draws them ABOVE its cover scrim, which would otherwise hide them.
+   */
+  showDots?: boolean;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -41,6 +47,7 @@ export function Carousel({
   aspectRatio = POSTER_RATIO,
   initialIndex = 0,
   onIndexChange,
+  showDots = true,
   style,
 }: CarouselProps) {
   const [width, setWidth] = useState(Dimensions.get('window').width);
@@ -91,7 +98,7 @@ export function Carousel({
         ))}
       </ScrollView>
 
-      {slides.length > 1 ? (
+      {showDots && slides.length > 1 ? (
         <View style={styles.dots} pointerEvents="none">
           <PageDots count={slides.length} activeIndex={index} />
         </View>
