@@ -26,10 +26,11 @@ import { LocationPreview } from './LocationPreview';
 // shows dots when the event has multiple covers) with a soft bottom scrim and a
 // top scrim; overlaid cover chrome = back (top-left) + Share (top-right). A
 // scrolling body (heading, meta, about, location) and a pinned action bar: the
-// primary CTA is the single local Save (wide lime Button, + → Check) with a
-// secondary Open-in-browser icon button (ArrowUpRight → the event's web page) to
-// its right. No backend here — save is local, Share is the native sheet,
-// browser/maps are external links.
+// single local Save is a wide Button that flips DS variant on toggle — Primary
+// (lime, + SAVE) when unsaved → Secondary (neutral outline, ✓ SAVED, no lime)
+// once saved — beside a secondary Open-in-browser icon button (ArrowUpRight →
+// the event's web page). No backend here — save is local, Share is the native
+// sheet, browser/maps are external links.
 const HERO_RATIO = 4 / 5;
 const META_ICON = 20;
 const ACTION_ICON = 24;
@@ -184,7 +185,7 @@ export function EventDetailScreen({ event }: EventDetailScreenProps) {
       <View style={[styles.actionBar, { paddingBottom: insets.bottom + theme.spacing.sm }]}>
         <Button
           label={saved ? 'Saved' : 'Save'}
-          type="primary"
+          type={saved ? 'secondary' : 'primary'}
           leftIcon={saved ? Check : Plus}
           onPress={() => setSaved((prev) => !prev)}
           style={styles.saveButton}
