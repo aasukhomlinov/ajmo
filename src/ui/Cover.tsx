@@ -7,8 +7,17 @@ import { theme } from '@/lib/theme';
 import { Badge } from './Badge';
 
 // EventCard cover image area. Image placeholder = surface/raised (swap for photo).
-// Bottom scrim → color/scrim for title legibility; top overlay = lime date Badge
-// (left) + neutral category Badge (right). Toggle parts off for thumbnails.
+// Bottom scrim = a SOFT vertical gradient easing from transparent to surface/base
+// (the card-body color, full alpha at the very bottom) so the photo dissolves into
+// the card with no hard edge — and the title/meta stay legible over any photo. Top
+// overlay = lime date Badge (left) + neutral category Badge (right). Toggle parts
+// off for thumbnails.
+//
+// DS note: the Figma frame draws this as transparent → surface/base (it blends the
+// cover into the surface/base card body, NOT the literal `scrim` token). We follow
+// that — over real photos the soft fade to the body color reads far better than a
+// hard pill, and readability wins (per the design brief).
+const SCRIM_COLOR = theme.colors.surface.base;
 export type CoverRatio = '16:10' | '16:9' | '4:3' | '1:1';
 
 const ratioValue: Record<CoverRatio, number> = {
@@ -62,8 +71,9 @@ export function Cover({
           <Svg width="100%" height="100%" preserveAspectRatio="none">
             <Defs>
               <LinearGradient id="coverScrim" x1="0" y1="0" x2="0" y2="1">
-                <Stop offset="0" stopColor={theme.colors.bg} stopOpacity={0} />
-                <Stop offset="1" stopColor={theme.colors.bg} stopOpacity={0.8} />
+                <Stop offset="0" stopColor={SCRIM_COLOR} stopOpacity={0} />
+                <Stop offset="0.6" stopColor={SCRIM_COLOR} stopOpacity={0.6} />
+                <Stop offset="1" stopColor={SCRIM_COLOR} stopOpacity={1} />
               </LinearGradient>
             </Defs>
             <Rect x="0" y="0" width="100%" height="100%" fill="url(#coverScrim)" />
@@ -92,7 +102,7 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    height: '45%',
+    height: '55%',
   },
   overlay: {
     position: 'absolute',
