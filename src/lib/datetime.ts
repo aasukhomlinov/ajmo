@@ -19,6 +19,11 @@ export function dateChipLabel(iso: string): string {
   return `${format(parseISO(iso), 'EEE d MMM').toUpperCase()} · ${format(parseISO(iso), 'HH:mm')}`;
 }
 
+/** Event-detail date line, e.g. "Saturday, 13 June" (full weekday + day + month). */
+export function detailDateLabel(iso: string): string {
+  return format(parseISO(iso), 'EEEE, d MMMM');
+}
+
 /** Meta-row time, e.g. "21:00" or "20:00 – 22:00" when an end time exists. */
 export function timeLabel(startIso: string, endIso?: string): string {
   const start = format(parseISO(startIso), 'HH:mm');

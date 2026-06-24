@@ -66,11 +66,12 @@ export function DiscoverScreen() {
           category={categoryLabel(item.category)}
           imageUrl={item.cover_url}
           saved={savedIds.has(item.id)}
+          onPress={() => router.push({ pathname: '/event/[id]', params: { id: item.id } })}
           onToggleSave={() => toggleSave(item.id)}
         />
       </View>
     ),
-    [savedIds, toggleSave],
+    [router, savedIds, toggleSave],
   );
 
   const renderSectionHeader = useCallback(
