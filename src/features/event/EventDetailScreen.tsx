@@ -1,7 +1,7 @@
 import { useRouter } from 'expo-router';
 import {
   ArrowLeft,
-  ArrowUpRight,
+  ArrowSquareOut,
   CalendarBlank,
   Check,
   MapPin,
@@ -10,7 +10,7 @@ import {
   Ticket,
 } from 'phosphor-react-native';
 import { useCallback, useState } from 'react';
-import { Linking, Pressable, ScrollView, Share, StyleSheet, View } from 'react-native';
+import { Linking, ScrollView, Share, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
@@ -21,13 +21,14 @@ import { Badge, Button, Carousel, Divider, IconButton, Screen, Text } from '@/ui
 
 import { categoryLabel } from '../discover/categories';
 import { LocationPreview } from './LocationPreview';
-import { sourceHandle } from './source';
 
-// Event Detail (app frame 152:178). Full-bleed 4:5 Carousel cover with a soft
-// bottom scrim (poster dissolves into the page) + a top scrim for the back
-// button; a scrolling body (heading, meta, about, source, location); and a
-// pinned action bar (save CTA + native Share). Save is local-only and Share is
-// the native sheet — no Supabase here (per the build scope).
+// Event Detail (app frame 152:178). Full-bleed 4:5 Carousel cover (paginates +
+// shows dots when the event has multiple covers) with a soft bottom scrim and a
+// top scrim; overlaid cover chrome = back (top-left) + Share (top-right). A
+// scrolling body (heading, meta, about, location) and a pinned action bar whose
+// primary outbound action is Open-in-browser (the event's web page) next to the
+// single local Save (+ → lime Check). No backend here — save is local, Share is
+// the native sheet, browser/maps are external links.
 const HERO_RATIO = 4 / 5;
 const META_ICON = 20;
 const ACTION_ICON = 24;
@@ -49,16 +50,21 @@ export function EventDetailScreen({ event }: EventDetailScreenProps) {
     });
   }, [event.title, event.source_url]);
 
+  const onOpenBrowser = useCallback(() => {
+    void Linking.openURL(event.source_url);
+  }, [event.source_url]);
+
   const dateLine = `${detailDateLabel(event.starts_at)} · ${timeLabel(event.starts_at, event.ends_at)}`;
   const priceLine = event.is_free ? 'Free' : event.price_text;
+  const covers = event.covers ?? [event.cover_url];
 
   return (
     <Screen>
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.content}>
-        {/* Hero — first real use of the Carousel outside the gallery. One cover
-            renders without page dots; multiple covers page + show lime dots. */}
+        {/* Hero — Carousel of the event's covers. One cover renders without page
+            dots; multiple covers paginate + show lime dots. */}
         <View style={styles.hero}>
-          <Carousel images={[event.cover_url]} aspectRatio={HERO_RATIO} />
+          <Carousel images={covers} aspectRatio={HERO_RATIO} />
 
           <View style={styles.bottomScrim} pointerEvents="none">
             <Svg width="100%" height="100%" preserveAspectRatio="none">
@@ -85,6 +91,7 @@ export function EventDetailScreen({ event }: EventDetailScreenProps) {
             </Svg>
           </View>
 
+          {/* Cover chrome: back (left) + Share (right) */}
           <View style={[styles.topBar, { top: theme.spacing.lg }]}>
             <IconButton
               icon={<ArrowLeft size={ACTION_ICON} color={theme.colors.text.primary} />}
@@ -92,6 +99,13 @@ export function EventDetailScreen({ event }: EventDetailScreenProps) {
               style={styles.overlayButton}
               onPress={() => router.back()}
               accessibilityLabel="Go back"
+            />
+            <IconButton
+              icon={<ShareNetwork size={ACTION_ICON} color={theme.colors.text.primary} />}
+              variant="surface"
+              style={styles.overlayButton}
+              onPress={onShare}
+              accessibilityLabel="Share event"
             />
           </View>
         </View>
@@ -128,26 +142,13 @@ export function EventDetailScreen({ event }: EventDetailScreenProps) {
 
           <Divider />
 
-          {/* About */}
+          {/* About — plain description text */}
           <View style={styles.section}>
             <Text variant="caption" color={theme.colors.text.secondary} style={styles.sectionLabel}>
               About
             </Text>
             <Text variant="body">{event.description}</Text>
           </View>
-
-          {/* Source attribution */}
-          <Pressable
-            style={styles.source}
-            onPress={() => void Linking.openURL(event.source_url)}
-            accessibilityRole="link"
-            accessibilityLabel={`Open source: ${sourceHandle(event.source_url)}`}
-          >
-            <Text variant="bodySmall" color={theme.colors.text.secondary}>
-              via {sourceHandle(event.source_url)}
-            </Text>
-            <ArrowUpRight size={16} color={theme.colors.text.secondary} />
-          </Pressable>
 
           {/* Location */}
           <View style={styles.section}>
@@ -164,21 +165,27 @@ export function EventDetailScreen({ event }: EventDetailScreenProps) {
         </View>
       </ScrollView>
 
-      {/* Action bar — save (local) + native Share */}
+      {/* Action bar — Open in browser (primary outbound) + single local Save */}
       <View style={[styles.actionBar, { paddingBottom: insets.bottom + theme.spacing.sm }]}>
         <Button
-          label={saved ? 'Saved' : 'Save'}
+          label="Open in browser"
           type="primary"
-          leftIcon={saved ? Check : Plus}
-          onPress={() => setSaved((prev) => !prev)}
-          style={styles.saveButton}
+          leftIcon={ArrowSquareOut}
+          onPress={onOpenBrowser}
+          style={styles.browserButton}
         />
         <IconButton
-          icon={<ShareNetwork size={ACTION_ICON} color={theme.colors.text.primary} />}
+          icon={
+            saved ? (
+              <Check size={ACTION_ICON} weight="bold" color={theme.colors.text.onAccent} />
+            ) : (
+              <Plus size={ACTION_ICON} color={theme.colors.text.primary} />
+            )
+          }
           variant="surface"
-          style={styles.overlayButton}
-          onPress={onShare}
-          accessibilityLabel="Share event"
+          style={saved ? styles.saveActive : undefined}
+          onPress={() => setSaved((prev) => !prev)}
+          accessibilityLabel={saved ? 'Saved — tap to remove' : 'Save event'}
         />
       </View>
     </Screen>
@@ -246,11 +253,6 @@ const styles = StyleSheet.create({
   sectionLabel: {
     textTransform: 'uppercase',
   },
-  source: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.xs,
-  },
   actionBar: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -259,7 +261,11 @@ const styles = StyleSheet.create({
     paddingTop: theme.spacing.sm,
     backgroundColor: theme.colors.bg,
   },
-  saveButton: {
+  browserButton: {
     flex: 1,
+  },
+  saveActive: {
+    backgroundColor: theme.colors.accent.base,
+    borderColor: 'transparent',
   },
 });
