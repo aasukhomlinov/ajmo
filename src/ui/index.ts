@@ -11,6 +11,7 @@ export { IconButton, type IconButtonProps, type IconButtonVariant } from './Icon
 export { Input, type InputProps, type InputType } from './Input';
 export { ListRow, type ListRowProps } from './ListRow';
 export { ListSectionHeader, type ListSectionHeaderProps } from './ListSectionHeader';
+export { Logo, type LogoProps } from './Logo';
 export { PageDots, type PageDotsProps } from './PageDots';
 export { Radio, type RadioProps } from './Radio';
 export { Screen, type ScreenProps } from './Screen';

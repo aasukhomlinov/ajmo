@@ -2,13 +2,13 @@ import { useRouter } from 'expo-router';
 import { StyleSheet, View } from 'react-native';
 
 import { theme } from '@/lib/theme';
-import { Button, Text } from '@/ui';
+import { Button, Logo } from '@/ui';
 
 export default function HomeScreen() {
   const router = useRouter();
   return (
     <View style={styles.container}>
-      <Text variant="display">ajmo</Text>
+      <Logo height={48} />
       {/* Temporary dev entries — remove once the auth gate becomes the entry point. */}
       <Button label="Open app (tabs)" onPress={() => router.push('/discover')} />
       <Button

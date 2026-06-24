@@ -2,15 +2,12 @@ import { MagnifyingGlass, MapPin } from 'phosphor-react-native';
 import { Pressable, StyleSheet, View } from 'react-native';
 
 import { theme } from '@/lib/theme';
-import { IconButton, Text } from '@/ui';
+import { IconButton, Logo, Text } from '@/ui';
 
 // Discover app bar (frame node 177:843): the ajmo wordmark (left), a city pill
 // that routes to the city picker, and a search button that routes to search.
-// Fixed above the scrolling feed — it does not scroll with the list.
-//
-// NOTE: the brand mark is "ajmo" set in Lineal as an asset (see CLAUDE.md). That
-// asset doesn't exist yet, so we stand in with the Display preset in accent —
-// same placeholder the home screen uses. Swap for the SVG/PNG logo when it lands.
+// Fixed above the scrolling feed — it does not scroll with the list. The logo is
+// the DS Logo vector (Small variant, 98×33) tinted to the accent token.
 
 export interface DiscoverHeaderProps {
   cityLabel: string;
@@ -21,9 +18,7 @@ export interface DiscoverHeaderProps {
 export function DiscoverHeader({ cityLabel, onCityPress, onSearchPress }: DiscoverHeaderProps) {
   return (
     <View style={styles.header}>
-      <Text variant="display" color={theme.colors.accent.base}>
-        ajmo
-      </Text>
+      <Logo />
 
       <View style={styles.actions}>
         <Pressable
