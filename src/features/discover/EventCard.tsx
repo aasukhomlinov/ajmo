@@ -8,9 +8,10 @@ import { Text } from '@/ui/Text';
 
 // Event feed card — composes Cover (16:10, lime date Badge + neutral category
 // Badge) + Phosphor meta icons. The body overlaps the cover by 28px so the wide
-// title reads over the scrim. A single save control (per CLAUDE.md: one "+"
-// bookmark, no "going"/"like") sits beside the title: outline Plus by default,
-// lime-filled Check once saved.
+// title reads over the scrim. Below the title: an info column (meta time·price
+// over the venue line) with a single save control pinned to its bottom-right
+// corner — per CLAUDE.md one "+" bookmark, no "going"/"like": outline Plus by
+// default, lime-filled Check once saved. Layout matches app frame node 177:837.
 const TITLE_OVERLAP = 28;
 const META_ICON_SIZE = 16;
 const SAVE_ICON_SIZE = 24;
@@ -51,10 +52,40 @@ export function EventCard({
       />
 
       <View style={styles.body}>
-        <View style={styles.titleRow}>
-          <Text variant="h1" style={styles.flex} numberOfLines={2}>
-            {title}
-          </Text>
+        <Text variant="h1" style={styles.title} numberOfLines={2}>
+          {title}
+        </Text>
+
+        <View style={styles.row}>
+          <View style={styles.info}>
+            <View style={styles.meta}>
+              <View style={styles.metaItem}>
+                <Clock size={META_ICON_SIZE} color={theme.colors.text.secondary} />
+                <Text variant="bodySmall" color={theme.colors.text.secondary}>
+                  {time}
+                </Text>
+              </View>
+              <View style={styles.metaItem}>
+                <Ticket size={META_ICON_SIZE} color={theme.colors.text.secondary} />
+                <Text variant="bodySmall" color={theme.colors.text.secondary}>
+                  {price}
+                </Text>
+              </View>
+            </View>
+
+            <View style={styles.metaItem}>
+              <MapPin size={META_ICON_SIZE} color={theme.colors.text.secondary} />
+              <Text
+                variant="bodySmall"
+                color={theme.colors.text.secondary}
+                style={styles.flex}
+                numberOfLines={1}
+              >
+                {venue}
+              </Text>
+            </View>
+          </View>
+
           <IconButton
             icon={
               saved ? (
@@ -68,33 +99,6 @@ export function EventCard({
             accessibilityLabel={saved ? 'Saved — tap to remove' : 'Save event'}
             style={saved ? styles.saveActive : undefined}
           />
-        </View>
-
-        <View style={styles.row}>
-          <MapPin size={META_ICON_SIZE} color={theme.colors.text.secondary} />
-          <Text
-            variant="bodySmall"
-            color={theme.colors.text.secondary}
-            style={styles.flex}
-            numberOfLines={1}
-          >
-            {venue}
-          </Text>
-        </View>
-
-        <View style={styles.meta}>
-          <View style={styles.row}>
-            <Clock size={META_ICON_SIZE} color={theme.colors.text.secondary} />
-            <Text variant="bodySmall" color={theme.colors.text.secondary}>
-              {time}
-            </Text>
-          </View>
-          <View style={styles.row}>
-            <Ticket size={META_ICON_SIZE} color={theme.colors.text.secondary} />
-            <Text variant="bodySmall" color={theme.colors.text.primary}>
-              {price}
-            </Text>
-          </View>
         </View>
       </View>
     </Pressable>
@@ -118,16 +122,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: theme.spacing.lg,
     paddingBottom: theme.spacing.lg,
   },
-  titleRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: theme.spacing.md,
-  },
-  saveActive: {
-    backgroundColor: theme.colors.accent.base,
-    borderColor: 'transparent',
+  title: {
+    width: '100%',
   },
   row: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: theme.spacing.md,
+  },
+  info: {
+    flex: 1,
+    gap: theme.spacing.sm,
+  },
+  meta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: theme.spacing.md,
+  },
+  metaItem: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: theme.spacing.xs,
@@ -135,9 +147,8 @@ const styles = StyleSheet.create({
   flex: {
     flex: 1,
   },
-  meta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: theme.spacing.md,
+  saveActive: {
+    backgroundColor: theme.colors.accent.base,
+    borderColor: 'transparent',
   },
 });

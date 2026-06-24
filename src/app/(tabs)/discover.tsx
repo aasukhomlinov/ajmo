@@ -1,6 +1,7 @@
-import { TabPlaceholder } from '@/features/dev/TabPlaceholder';
+import { DiscoverScreen } from '@/features/discover/DiscoverScreen';
 
-// Tab shell only — real feed comes in the screen phase.
-export default function DiscoverScreen() {
-  return <TabPlaceholder title="Discover" subtitle="Event feed — coming in the screen phase" />;
+// Discover tab — the event feed. Screen lives in the discover feature; this file
+// is just the Expo Router entry.
+export default function Discover() {
+  return <DiscoverScreen />;
 }
