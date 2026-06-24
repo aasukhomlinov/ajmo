@@ -46,7 +46,14 @@ export interface Event {
   /** Human-readable price as parsed from the source (e.g. "2500 RSD", "Free"). */
   price_text: string;
   is_free: boolean;
+  /** Feed thumbnail / first gallery image. Always equals `covers[0]`. */
   cover_url: string;
+  /**
+   * Full cover gallery shown by the Event Detail carousel. Optional and
+   * nullable-friendly (Supabase): when omitted the event is single-image and
+   * only `cover_url` is used. When present, `covers[0] === cover_url`.
+   */
+  covers?: string[];
   /** Canonical link back to the venue / channel the event was parsed from. */
   source_url: string;
 }

@@ -34,6 +34,7 @@ export const MOCK_EVENTS: Event[] = [
     price_text: '2500 RSD',
     is_free: false,
     cover_url: cover('noize-mc'),
+    covers: [cover('noize-mc'), cover('noize-mc-2'), cover('noize-mc-3')],
     source_url: 'https://www.domomladine.org/events/noize-mc',
   },
   {
@@ -47,6 +48,7 @@ export const MOCK_EVENTS: Event[] = [
     price_text: '3500 RSD',
     is_free: false,
     cover_url: cover('drumcode'),
+    covers: [cover('drumcode'), cover('drumcode-2'), cover('drumcode-3')],
     source_url: 'https://www.drugstore.rs/events/adam-beyer',
   },
   {
@@ -61,6 +63,12 @@ export const MOCK_EVENTS: Event[] = [
     price_text: 'Free',
     is_free: true,
     cover_url: cover('abramovic'),
+    covers: [
+      cover('abramovic'),
+      cover('abramovic-2'),
+      cover('abramovic-3'),
+      cover('abramovic-4'),
+    ],
     source_url: 'https://www.kcgrad.rs/events/abramovic',
   },
   {
@@ -250,6 +258,7 @@ export const MOCK_EVENTS: Event[] = [
     price_text: '3000 RSD',
     is_free: false,
     cover_url: cover('brejcha'),
+    covers: [cover('brejcha'), cover('brejcha-2')],
     source_url: 'https://www.exitfest.org/warmup/brejcha',
   },
   {
