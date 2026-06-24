@@ -4,7 +4,8 @@ import type { Event } from '@/lib/types';
 // stubbed out. Shapes match `Event` 1:1 so the screen code is identical once the
 // real query lands. Dates are generated RELATIVE TO NOW (see `at`) so the feed
 // always shows upcoming events and the Today / This week filters stay meaningful
-// no matter when the app is run.
+// no matter when the app is run. Venue lat/lng are approximate real coordinates
+// (enough for the Event Detail map pin + the "open in maps" launcher).
 
 // Start of today, local. Mutated copies drive every event's start/end.
 const TODAY = new Date();
@@ -25,7 +26,7 @@ export const MOCK_EVENTS: Event[] = [
   {
     id: 'bg-noize-mc',
     city: 'belgrade',
-    venue: { name: 'Dom omladine Beograda', address: 'Makedonska 22' },
+    venue: { name: 'Dom omladine Beograda', address: 'Makedonska 22', lat: 44.8127, lng: 20.4631 },
     title: 'Noize MC',
     description: 'Russian rap-rock provocateur live, with a full band and a late support set.',
     category: 'music',
@@ -38,7 +39,7 @@ export const MOCK_EVENTS: Event[] = [
   {
     id: 'bg-drumcode',
     city: 'belgrade',
-    venue: { name: 'Drugstore', address: 'Bulevar despota Stefana 115' },
+    venue: { name: 'Drugstore', address: 'Bulevar despota Stefana 115', lat: 44.8196, lng: 20.4823 },
     title: 'Drumcode Night: Adam Beyer',
     description: 'Techno marathon in the old slaughterhouse hall — doors at 23:00, no re-entry.',
     category: 'party',
@@ -51,7 +52,7 @@ export const MOCK_EVENTS: Event[] = [
   {
     id: 'bg-abramovic',
     city: 'belgrade',
-    venue: { name: 'KC Grad', address: 'Braće Krsmanović 4' },
+    venue: { name: 'KC Grad', address: 'Braće Krsmanović 4', lat: 44.8166, lng: 20.4558 },
     title: 'Marina Abramović: Retrospektiva',
     description: 'Archival performance documentation and new video work, free entry all evening.',
     category: 'art',
@@ -65,7 +66,7 @@ export const MOCK_EVENTS: Event[] = [
   {
     id: 'bg-street-food',
     city: 'belgrade',
-    venue: { name: 'Dorćol Platz', address: 'Dobračina 59b' },
+    venue: { name: 'Dorćol Platz', address: 'Dobračina 59b', lat: 44.8232, lng: 20.4651 },
     title: 'Dorćol Street Food Market',
     description: 'Two dozen kitchens, natural wine bar and a vinyl corner in the courtyard.',
     category: 'food',
@@ -79,7 +80,7 @@ export const MOCK_EVENTS: Event[] = [
   {
     id: 'bg-letnji-bioskop',
     city: 'belgrade',
-    venue: { name: 'Bioskop Balkan', address: 'Braće Jugovića 16' },
+    venue: { name: 'Bioskop Balkan', address: 'Braće Jugovića 16', lat: 44.8169, lng: 20.4592 },
     title: 'Letnji bioskop: Apocalypse Now',
     description: 'The Final Cut on 35mm, introduced by the cinematheque programmer.',
     category: 'cinema',
@@ -92,7 +93,7 @@ export const MOCK_EVENTS: Event[] = [
   {
     id: 'bg-bure-baruta',
     city: 'belgrade',
-    venue: { name: 'Madlenianum', address: 'Glavna 32, Zemun' },
+    venue: { name: 'Madlenianum', address: 'Glavna 32, Zemun', lat: 44.8432, lng: 20.4109 },
     title: 'Bure baruta',
     description: 'Dejan Dukovski’s Balkan classic, staged in a single unbroken night.',
     category: 'theatre',
@@ -105,7 +106,7 @@ export const MOCK_EVENTS: Event[] = [
   {
     id: 'bg-jazz-bistrik',
     city: 'belgrade',
-    venue: { name: 'Bitefartcafe', address: 'Skver Mire Trailović 1' },
+    venue: { name: 'Bitefartcafe', address: 'Skver Mire Trailović 1', lat: 44.8155, lng: 20.4717 },
     title: 'Jazz veče: Bilja Krstić & Bistrik',
     description: 'Balkan folk reworked for a jazz quintet — two sets, table seating.',
     category: 'music',
@@ -119,7 +120,7 @@ export const MOCK_EVENTS: Event[] = [
   {
     id: 'bg-cetinjska-openair',
     city: 'belgrade',
-    venue: { name: 'Cetinjska 15', address: 'Cetinjska 15' },
+    venue: { name: 'Cetinjska 15', address: 'Cetinjska 15', lat: 44.8170, lng: 20.4625 },
     title: 'Cetinjska Open Air',
     description: 'Free yard party rotating through every bar in the old brewery block.',
     category: 'party',
@@ -132,7 +133,7 @@ export const MOCK_EVENTS: Event[] = [
   {
     id: 'bg-dizajn-market',
     city: 'belgrade',
-    venue: { name: 'Magacin', address: 'Kraljevića Marka 4' },
+    venue: { name: 'Magacin', address: 'Kraljevića Marka 4', lat: 44.8143, lng: 20.4554 },
     title: 'Dizajn Market',
     description: 'Independent designers, ceramics and print — small-batch only.',
     category: 'market',
@@ -146,7 +147,7 @@ export const MOCK_EVENTS: Event[] = [
   {
     id: 'bg-noc-muzeja',
     city: 'belgrade',
-    venue: { name: 'Muzej savremene umetnosti', address: 'Ušće 10' },
+    venue: { name: 'Muzej savremene umetnosti', address: 'Ušće 10', lat: 44.8193, lng: 20.4435 },
     title: 'Noć muzeja: Specijalna tura',
     description: 'After-hours guided tour of the permanent collection plus a rooftop set.',
     category: 'art',
@@ -160,7 +161,7 @@ export const MOCK_EVENTS: Event[] = [
   {
     id: 'bg-fest-premijera',
     city: 'belgrade',
-    venue: { name: 'Kombank Dvorana', address: 'Trg Nikole Pašića 5' },
+    venue: { name: 'Kombank Dvorana', address: 'Trg Nikole Pašića 5', lat: 44.8122, lng: 20.4642 },
     title: 'FEST premijera + Q&A',
     description: 'Opening-night domestic feature with the director and cast in the room.',
     category: 'cinema',
@@ -173,7 +174,7 @@ export const MOCK_EVENTS: Event[] = [
   {
     id: 'bg-repetitor',
     city: 'belgrade',
-    venue: { name: 'Elektropionir', address: 'Vlajkovićeva 9' },
+    venue: { name: 'Elektropionir', address: 'Vlajkovićeva 9', lat: 44.8116, lng: 20.4668 },
     title: 'Indie veče: Repetitor',
     description: 'Belgrade post-punk trio, loud and early — support act opens at 21:00.',
     category: 'music',
@@ -186,7 +187,7 @@ export const MOCK_EVENTS: Event[] = [
   {
     id: 'bg-techno-podzemlje',
     city: 'belgrade',
-    venue: { name: 'Drugstore', address: 'Bulevar despota Stefana 115' },
+    venue: { name: 'Drugstore', address: 'Bulevar despota Stefana 115', lat: 44.8196, lng: 20.4823 },
     title: 'Techno Podzemlje',
     description: 'Local residents take the basement until close. Cash only at the bar.',
     category: 'party',
@@ -199,7 +200,7 @@ export const MOCK_EVENTS: Event[] = [
   {
     id: 'bg-gospodja-ministarka',
     city: 'belgrade',
-    venue: { name: 'Bitefartcafe', address: 'Skver Mire Trailović 1' },
+    venue: { name: 'Bitefartcafe', address: 'Skver Mire Trailović 1', lat: 44.8155, lng: 20.4717 },
     title: 'Gospođa ministarka',
     description: 'Nušić’s satire in a stripped-back studio staging. Serbian, no surtitles.',
     category: 'theatre',
@@ -212,7 +213,7 @@ export const MOCK_EVENTS: Event[] = [
   {
     id: 'bg-vinski-festival',
     city: 'belgrade',
-    venue: { name: 'Beton hala', address: 'Karađorđeva 2–4' },
+    venue: { name: 'Beton hala', address: 'Karađorđeva 2–4', lat: 44.8174, lng: 20.4521 },
     title: 'Beograd Wine Festival',
     description: 'Riverfront tasting with 40+ regional winemakers; glass included with entry.',
     category: 'food',
@@ -226,7 +227,7 @@ export const MOCK_EVENTS: Event[] = [
   {
     id: 'bg-filharmonija',
     city: 'belgrade',
-    venue: { name: 'Kolarac', address: 'Studentski trg 5' },
+    venue: { name: 'Kolarac', address: 'Studentski trg 5', lat: 44.8185, lng: 20.4566 },
     title: 'Beogradska filharmonija: Mahler 5',
     description: 'Mahler’s Fifth under the principal guest conductor. Doors 19:30.',
     category: 'music',
@@ -241,7 +242,7 @@ export const MOCK_EVENTS: Event[] = [
   {
     id: 'ns-boris-brejcha',
     city: 'novi-sad',
-    venue: { name: 'Quarter', address: 'Beogradski kej 9' },
+    venue: { name: 'Quarter', address: 'Beogradski kej 9', lat: 45.2516, lng: 19.8567 },
     title: 'Egzit Warm-up: Boris Brejcha',
     description: 'High-tech minimal night in the Petrovaradin district ahead of the festival.',
     category: 'party',
@@ -254,7 +255,7 @@ export const MOCK_EVENTS: Event[] = [
   {
     id: 'ns-sterijino-pozorje',
     city: 'novi-sad',
-    venue: { name: 'Kulturni centar Novog Sada', address: 'Katolička porta 5' },
+    venue: { name: 'Kulturni centar Novog Sada', address: 'Katolička porta 5', lat: 45.2551, lng: 19.8455 },
     title: 'Izložba: Sterijino pozorje',
     description: 'Seventy years of the theatre festival in posters, sets and photographs.',
     category: 'art',
@@ -268,7 +269,7 @@ export const MOCK_EVENTS: Event[] = [
   {
     id: 'ns-kostana',
     city: 'novi-sad',
-    venue: { name: 'Srpsko narodno pozorište', address: 'Pozorišni trg 1' },
+    venue: { name: 'Srpsko narodno pozorište', address: 'Pozorišni trg 1', lat: 45.2557, lng: 19.8469 },
     title: 'SNP: Koštana',
     description: 'Bora Stanković’s drama with live tamburica accompaniment.',
     category: 'theatre',
@@ -281,7 +282,7 @@ export const MOCK_EVENTS: Event[] = [
   {
     id: 'ns-salas-doruchak',
     city: 'novi-sad',
-    venue: { name: 'Fabrika', address: 'Bulevar despota Stefana 5' },
+    venue: { name: 'Fabrika', address: 'Bulevar despota Stefana 5', lat: 45.2642, lng: 19.8331 },
     title: 'Salaš Doručak Market',
     description: 'Slow-food brunch market — farm cheese, kajmak and rakija from the salaši.',
     category: 'food',

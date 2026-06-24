@@ -18,6 +18,13 @@ export type EventCategory =
 export interface Venue {
   name: string;
   address: string;
+  /**
+   * Venue geolocation. Mirrors the future `venues.lat`/`venues.lng` columns.
+   * Drives the Event Detail map snippet (a static placeholder + pin in MVP —
+   * no maps SDK) and the "open in maps app" launcher.
+   */
+  lat: number;
+  lng: number;
 }
 
 /**
