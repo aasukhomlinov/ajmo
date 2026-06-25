@@ -4,6 +4,7 @@ import { SectionList, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { dateChipLabel, timeLabel } from '@/lib/datetime';
+import { useSaves, useSavedIds } from '@/lib/stores/saves';
 import { theme } from '@/lib/theme';
 import type { CityId, Event } from '@/lib/types';
 import { EmptyState, EventCardSkeleton, ListSectionHeader, Screen } from '@/ui';
@@ -34,17 +35,11 @@ export function DiscoverScreen() {
   const { filters, sections, cycleCategory, cycleDate, toggleFree, clearFilters } =
     useDiscoverFeed(ACTIVE_CITY);
 
-  // Local save state — a set of saved event ids. Swap for the user-scoped
-  // Supabase mutation in the save phase (CLAUDE.md: saves are per-user).
-  const [savedIds, setSavedIds] = useState<Set<string>>(() => new Set());
-  const toggleSave = useCallback((id: string) => {
-    setSavedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  }, []);
+  // Save state now lives in the shared store so the feed, Event Detail and the
+  // Saved screen all reflect the same set (CLAUDE.md: saves are per-user; the
+  // store swaps to a Supabase mutation later).
+  const savedIds = useSavedIds();
+  const toggleSave = useSaves((s) => s.toggleSave);
 
   // Stand-in for react-query's `isLoading` so the skeleton state is exercised on
   // mount. Replaced by the real query status when the feed query lands.

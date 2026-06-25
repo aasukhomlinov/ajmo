@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 
 import { queryClient } from '@/lib/queryClient';
+import { useSaves } from '@/lib/stores/saves';
 import { theme } from '@/lib/theme';
 
 SplashScreen.preventAutoHideAsync();
@@ -29,6 +30,12 @@ export default function RootLayout() {
       SplashScreen.hideAsync();
     }
   }, [fontsLoaded, fontError]);
+
+  // Load persisted saves once so the feed/detail/Saved screen reflect them on
+  // launch (in-memory store; swaps to a per-user Supabase query later).
+  useEffect(() => {
+    void useSaves.getState().hydrate();
+  }, []);
 
   if (!fontsLoaded && !fontError) {
     return null;

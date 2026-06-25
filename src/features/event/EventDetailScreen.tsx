@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { detailDateLabel, timeLabel } from '@/lib/datetime';
+import { useIsSaved, useSaves } from '@/lib/stores/saves';
 import { theme } from '@/lib/theme';
 import type { Event } from '@/lib/types';
 import { Badge, Button, Carousel, Divider, IconButton, PageDots, Screen, Text } from '@/ui';
@@ -42,7 +43,10 @@ export interface EventDetailScreenProps {
 export function EventDetailScreen({ event }: EventDetailScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const [saved, setSaved] = useState(false);
+  // Save state comes from the shared store — toggling here is reflected in the
+  // feed card and the Saved screen, and vice versa.
+  const saved = useIsSaved(event.id);
+  const toggleSave = useSaves((s) => s.toggleSave);
   const [coverIndex, setCoverIndex] = useState(0);
 
   const onShare = useCallback(() => {
@@ -187,7 +191,7 @@ export function EventDetailScreen({ event }: EventDetailScreenProps) {
           label={saved ? 'Saved' : 'Save'}
           type={saved ? 'secondary' : 'primary'}
           leftIcon={saved ? Check : Plus}
-          onPress={() => setSaved((prev) => !prev)}
+          onPress={() => toggleSave(event.id)}
           style={styles.saveButton}
         />
         <IconButton
