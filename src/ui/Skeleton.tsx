@@ -91,13 +91,14 @@ export function EventCardSkeleton() {
   );
 }
 
-// Mirrors EventRow: 88px 1:1 thumb + date / title / venue lines.
+// Mirrors EventRow (DS node 210:1992): a flush 94px full-height thumb (left-rounded)
+// + date / title / venue lines, so the skeleton→row swap doesn't shift layout.
 export function EventRowSkeleton() {
   const pulse = usePulse(true);
 
   return (
     <View style={styles.row}>
-      <Skeleton pulse={pulse} width={ROW_THUMB} height={ROW_THUMB} radius={theme.radii.lg} />
+      <Animated.View style={[styles.rowThumb, { opacity: pulse }]} />
       <View style={styles.rowInfo}>
         <Skeleton pulse={pulse} height={theme.spacing.md} width="35%" />
         <Skeleton pulse={pulse} height={theme.spacing.xl} width="85%" radius={theme.radii.md} />
@@ -107,7 +108,7 @@ export function EventRowSkeleton() {
   );
 }
 
-const ROW_THUMB = 88;
+const ROW_THUMB = 94;
 
 const styles = StyleSheet.create({
   bar: {
@@ -135,17 +136,23 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
-    gap: theme.spacing.md,
-    alignItems: 'flex-start',
-    padding: theme.spacing.md,
+    alignItems: 'stretch',
     backgroundColor: theme.colors.surface.base,
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.radii.md,
+    overflow: 'hidden',
+  },
+  rowThumb: {
+    width: ROW_THUMB,
+    alignSelf: 'stretch',
+    backgroundColor: theme.colors.surface.raised,
+    borderTopLeftRadius: theme.radii.md,
+    borderBottomLeftRadius: theme.radii.md,
   },
   rowInfo: {
     flex: 1,
-    gap: theme.spacing.sm,
-    paddingVertical: theme.spacing.xs,
+    gap: theme.spacing.xs,
+    padding: theme.spacing.md,
   },
 });

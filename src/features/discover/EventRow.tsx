@@ -1,14 +1,17 @@
+import { Image } from 'expo-image';
 import { MapPin } from 'phosphor-react-native';
 import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
 import { theme } from '@/lib/theme';
 import { Badge, type BadgeTone } from '@/ui/Badge';
-import { Cover } from '@/ui/Cover';
 import { Text } from '@/ui/Text';
 
-// Compact event row — saved list, search results, map callout. 88px 1:1 Cover
-// thumb (overlays off) + date/title/venue + optional status Badge.
-const THUMB_SIZE = 88;
+// Compact event row — saved list, search results, map callout (DS node 210:1992).
+// A flush 94px-wide thumbnail bleeding to the row's top/bottom/left edges (rounded
+// only on the left to follow the row corner, no inset), then date/title/venue +
+// optional status Badge. The row clips its children so the thumb's right edge sits
+// square against the text block while the outer corners stay rounded.
+const THUMB_WIDTH = 94;
 const META_ICON_SIZE = 16;
 
 export interface EventRowBadge {
@@ -29,15 +32,16 @@ export interface EventRowProps {
 export function EventRow({ title, venue, date, imageUrl, badge, onPress, style }: EventRowProps) {
   return (
     <Pressable style={[styles.row, style]} onPress={onPress} accessibilityRole="button">
-      <Cover
-        imageUrl={imageUrl}
-        ratio="1:1"
-        showScrim={false}
-        showDateChip={false}
-        showBadge={false}
-        borderRadius={theme.radii.lg}
-        style={styles.thumb}
-      />
+      <View style={styles.thumb}>
+        {imageUrl ? (
+          <Image
+            source={{ uri: imageUrl }}
+            style={styles.thumbImage}
+            contentFit="cover"
+            transition={200}
+          />
+        ) : null}
+      </View>
 
       <View style={styles.info}>
         <Text variant="caption" color={theme.colors.accent.base} style={styles.date} numberOfLines={1}>
@@ -66,21 +70,28 @@ export function EventRow({ title, venue, date, imageUrl, badge, onPress, style }
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
-    gap: theme.spacing.md,
-    alignItems: 'flex-start',
-    padding: theme.spacing.md,
+    alignItems: 'stretch',
     backgroundColor: theme.colors.surface.base,
     borderWidth: 1,
     borderColor: theme.colors.border,
     borderRadius: theme.radii.md,
+    overflow: 'hidden',
   },
   thumb: {
-    width: THUMB_SIZE,
+    width: THUMB_WIDTH,
+    alignSelf: 'stretch',
+    backgroundColor: theme.colors.surface.raised,
+    borderTopLeftRadius: theme.radii.md,
+    borderBottomLeftRadius: theme.radii.md,
+  },
+  thumbImage: {
+    flex: 1,
   },
   info: {
     flex: 1,
     gap: theme.spacing.xs,
     alignItems: 'flex-start',
+    padding: theme.spacing.md,
   },
   date: {
     textTransform: 'uppercase',
