@@ -6,12 +6,12 @@ import { theme } from '@/lib/theme';
 import { Badge, type BadgeTone } from '@/ui/Badge';
 import { Text } from '@/ui/Text';
 
-// Compact event row — saved list, search results, map callout (DS node 210:1992).
-// A flush 94px-wide thumbnail bleeding to the row's top/bottom/left edges (rounded
-// only on the left to follow the row corner, no inset), then date/title/venue +
-// optional status Badge. The row clips its children so the thumb's right edge sits
-// square against the text block while the outer corners stay rounded.
-const THUMB_WIDTH = 94;
+// Compact event row — saved list, search results, map callout (DS node 90:3 /
+// 210:1992). A fixed 94×94 SQUARE thumbnail, flush to the row's left edge and
+// rounded only on the left corners (to follow the row corner); no inset. The
+// title is capped to a single ellipsized line, which keeps every row the same
+// height so the square thumb always fits cleanly (the row centers its children).
+const THUMB_SIZE = 94;
 const META_ICON_SIZE = 16;
 
 export interface EventRowBadge {
@@ -47,7 +47,7 @@ export function EventRow({ title, venue, date, imageUrl, badge, onPress, style }
         <Text variant="caption" color={theme.colors.accent.base} style={styles.date} numberOfLines={1}>
           {date}
         </Text>
-        <Text variant="h2" numberOfLines={2}>
+        <Text variant="h2" numberOfLines={1} ellipsizeMode="tail">
           {title}
         </Text>
         <View style={styles.venue}>
@@ -70,7 +70,7 @@ export function EventRow({ title, venue, date, imageUrl, badge, onPress, style }
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
-    alignItems: 'stretch',
+    alignItems: 'center',
     backgroundColor: theme.colors.surface.base,
     borderWidth: 1,
     borderColor: theme.colors.border,
@@ -78,14 +78,16 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   thumb: {
-    width: THUMB_WIDTH,
-    alignSelf: 'stretch',
+    width: THUMB_SIZE,
+    height: THUMB_SIZE,
     backgroundColor: theme.colors.surface.raised,
     borderTopLeftRadius: theme.radii.md,
     borderBottomLeftRadius: theme.radii.md,
+    overflow: 'hidden',
   },
   thumbImage: {
-    flex: 1,
+    width: '100%',
+    height: '100%',
   },
   info: {
     flex: 1,

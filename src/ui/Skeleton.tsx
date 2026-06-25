@@ -91,8 +91,8 @@ export function EventCardSkeleton() {
   );
 }
 
-// Mirrors EventRow (DS node 210:1992): a flush 94px full-height thumb (left-rounded)
-// + date / title / venue lines, so the skeleton→row swap doesn't shift layout.
+// Mirrors EventRow (DS node 90:3): a flush 94×94 SQUARE thumb (left-rounded) +
+// date / title / venue lines, so the skeleton→row swap doesn't shift layout.
 export function EventRowSkeleton() {
   const pulse = usePulse(true);
 
@@ -136,7 +136,7 @@ const styles = StyleSheet.create({
   },
   row: {
     flexDirection: 'row',
-    alignItems: 'stretch',
+    alignItems: 'center',
     backgroundColor: theme.colors.surface.base,
     borderWidth: 1,
     borderColor: theme.colors.border,
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
   },
   rowThumb: {
     width: ROW_THUMB,
-    alignSelf: 'stretch',
+    height: ROW_THUMB,
     backgroundColor: theme.colors.surface.raised,
     borderTopLeftRadius: theme.radii.md,
     borderBottomLeftRadius: theme.radii.md,
