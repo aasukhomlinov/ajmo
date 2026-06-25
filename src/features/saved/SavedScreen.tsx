@@ -3,14 +3,13 @@ import { useMemo } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { dateChipLabel } from '@/lib/datetime';
 import { MOCK_EVENTS } from '@/lib/mocks/events';
-import { useSavedIds } from '@/lib/stores/saves';
+import { useSaves, useSavedIds } from '@/lib/stores/saves';
 import { theme } from '@/lib/theme';
 import type { Event } from '@/lib/types';
 import { EmptyState, Header, Screen } from '@/ui';
 
-import { EventRow } from '../discover/EventRow';
+import { SavedRow } from './SavedRow';
 
 // Saved tab (app frames Saved 160:221 / Saved — Empty 166:300). A flat, shared
 // list of the user's bookmarked events: Header "Saved" + a column of EventRow
@@ -28,6 +27,7 @@ export function SavedScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const savedIds = useSavedIds();
+  const toggleSave = useSaves((s) => s.toggleSave);
 
   // Derive the saved events from the store, soonest-first (ISO strings sort
   // chronologically). Recomputes whenever the saved set changes, so unsaving an
@@ -61,12 +61,10 @@ export function SavedScreen() {
           data={savedEvents}
           keyExtractor={(event) => event.id}
           renderItem={({ item }: { item: Event }) => (
-            <EventRow
-              title={item.title}
-              venue={item.venue.name}
-              date={dateChipLabel(item.starts_at)}
-              imageUrl={item.cover_url}
+            <SavedRow
+              event={item}
               onPress={() => openEvent(item.id)}
+              onDelete={() => toggleSave(item.id)}
             />
           )}
           ItemSeparatorComponent={Separator}
