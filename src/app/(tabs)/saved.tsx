@@ -1,6 +1,7 @@
-import { TabPlaceholder } from '@/features/dev/TabPlaceholder';
+import { SavedScreen } from '@/features/saved/SavedScreen';
 
-// Tab shell only — real saved list comes in the screen phase.
-export default function SavedScreen() {
-  return <TabPlaceholder title="Saved" subtitle="Saved events — coming in the screen phase" />;
+// Saved tab — the user's bookmarked events. Screen lives in the saved feature;
+// this file is just the Expo Router entry.
+export default function Saved() {
+  return <SavedScreen />;
 }
