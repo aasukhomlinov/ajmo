@@ -6,6 +6,7 @@ import {
   TextInput,
   View,
   type StyleProp,
+  type TextInputProps,
   type ViewStyle,
 } from 'react-native';
 
@@ -30,6 +31,12 @@ export interface InputProps {
   disabled?: boolean;
   /** Dropdown only — opens the menu. */
   onPress?: () => void;
+  /** Text only — focus on mount (e.g. the search field). */
+  autoFocus?: boolean;
+  /** Text only — fired on the keyboard return/submit key. */
+  onSubmitEditing?: () => void;
+  /** Text only — return key label/affordance (e.g. "search"). */
+  returnKeyType?: TextInputProps['returnKeyType'];
   style?: StyleProp<ViewStyle>;
 }
 
@@ -43,6 +50,9 @@ export function Input({
   error = false,
   disabled = false,
   onPress,
+  autoFocus = false,
+  onSubmitEditing,
+  returnKeyType,
   style,
 }: InputProps) {
   const [focused, setFocused] = useState(false);
@@ -93,6 +103,9 @@ export function Input({
         placeholder={placeholder}
         placeholderTextColor={theme.colors.text.secondary}
         editable={!disabled}
+        autoFocus={autoFocus}
+        returnKeyType={returnKeyType}
+        onSubmitEditing={onSubmitEditing}
         selectionColor={theme.colors.accent.base}
         onFocus={() => setFocused(true)}
         onBlur={() => setFocused(false)}

@@ -17,11 +17,23 @@ export interface ChipProps {
   active?: boolean;
   /** Phosphor icon rendered before the label (16px, tinted to the label color). */
   leftIcon?: Icon;
+  /**
+   * Uppercase the label (DS default for filter chips). Set `false` to preserve
+   * casing for verbatim labels such as recent-search queries (Search · Empty).
+   */
+  uppercase?: boolean;
   onPress?: () => void;
   style?: StyleProp<ViewStyle>;
 }
 
-export function Chip({ label, active = false, leftIcon: LeftIcon, onPress, style }: ChipProps) {
+export function Chip({
+  label,
+  active = false,
+  leftIcon: LeftIcon,
+  uppercase = true,
+  onPress,
+  style,
+}: ChipProps) {
   const contentColor = active ? theme.colors.text.onAccent : theme.colors.text.secondary;
   return (
     <Pressable
@@ -33,7 +45,12 @@ export function Chip({ label, active = false, leftIcon: LeftIcon, onPress, style
       {LeftIcon ? (
         <LeftIcon size={ICON_SIZE} color={contentColor} weight={active ? 'fill' : 'regular'} />
       ) : null}
-      <Text variant="caption" color={contentColor} style={styles.label} numberOfLines={1}>
+      <Text
+        variant="caption"
+        color={contentColor}
+        style={uppercase ? styles.label : undefined}
+        numberOfLines={1}
+      >
         {label}
       </Text>
     </Pressable>
