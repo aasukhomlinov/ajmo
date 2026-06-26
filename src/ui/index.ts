@@ -1,4 +1,5 @@
 export { Badge, type BadgeProps, type BadgeTone } from './Badge';
+export { BottomSheet, type BottomSheetProps } from './BottomSheet';
 export { Button, type ButtonProps, type ButtonType } from './Button';
 export { Carousel, type CarouselProps } from './Carousel';
 export { Checkbox, type CheckboxProps } from './Checkbox';

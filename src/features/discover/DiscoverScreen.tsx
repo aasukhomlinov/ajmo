@@ -34,7 +34,7 @@ export function DiscoverScreen() {
   // picker re-derives the sections (useDiscoverFeed memoizes on city).
   const activeCity = useActiveCity();
 
-  const { filters, sections, cycleCategory, cycleDate, toggleFree, clearFilters } =
+  const { filters, sections, setCategories, setDate, toggleFree, clearFilters } =
     useDiscoverFeed(activeCity);
 
   // Save state now lives in the shared store so the feed, Event Detail and the
@@ -111,8 +111,8 @@ export function DiscoverScreen() {
             <View style={styles.filterWrap}>
               <FilterBar
                 filters={filters}
-                onCycleCategory={cycleCategory}
-                onCycleDate={cycleDate}
+                onApplyCategories={setCategories}
+                onApplyDate={setDate}
                 onToggleFree={toggleFree}
               />
             </View>

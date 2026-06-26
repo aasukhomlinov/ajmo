@@ -24,6 +24,18 @@ export const CATEGORY_META: Record<EventCategory, { label: string; icon: Icon }>
   market: { label: 'Market', icon: Storefront },
 };
 
+// Display order for the category filter grid (Categories sheet). Matches the
+// taxonomy in `EventCategory`; the sheet renders one Chip per entry.
+export const CATEGORY_ORDER: EventCategory[] = [
+  'music',
+  'party',
+  'art',
+  'food',
+  'cinema',
+  'theatre',
+  'market',
+];
+
 export function categoryLabel(category: EventCategory): string {
   return CATEGORY_META[category].label;
 }
