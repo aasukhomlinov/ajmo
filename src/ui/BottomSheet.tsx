@@ -128,7 +128,11 @@ export function BottomSheet({ visible, onClose, title, footer, children }: Botto
           style={[
             styles.sheet,
             {
-              paddingBottom: insets.bottom + theme.spacing['2xl'],
+              // Match the Figma frames: a 16px (spacing.lg) resting gap below
+              // the footer. The frame's home-indicator element IS the safe area,
+              // so take the larger of the design gap and the device inset rather
+              // than summing them (summing double-counts the home indicator).
+              paddingBottom: Math.max(theme.spacing.lg, insets.bottom),
               opacity: fade,
               transform: [{ translateY }],
             },
