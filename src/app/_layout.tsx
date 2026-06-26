@@ -8,6 +8,7 @@ import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { queryClient } from '@/lib/queryClient';
+import { useCity } from '@/lib/stores/city';
 import { useSaves } from '@/lib/stores/saves';
 import { theme } from '@/lib/theme';
 
@@ -33,10 +34,12 @@ export default function RootLayout() {
     }
   }, [fontsLoaded, fontError]);
 
-  // Load persisted saves once so the feed/detail/Saved screen reflect them on
-  // launch (in-memory store; swaps to a per-user Supabase query later).
+  // Load persisted saves + active city once so the feed/detail/Saved screen and
+  // the city scope reflect them on launch (local stores; swap to per-user
+  // Supabase queries later).
   useEffect(() => {
     void useSaves.getState().hydrate();
+    void useCity.getState().hydrate();
   }, []);
 
   if (!fontsLoaded && !fontError) {
