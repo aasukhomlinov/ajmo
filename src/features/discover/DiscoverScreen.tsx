@@ -3,10 +3,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { SectionList, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { cityHeaderLabel } from '@/lib/cities';
 import { dateChipLabel, timeLabel } from '@/lib/datetime';
+import { useActiveCity } from '@/lib/stores/city';
 import { useSaves, useSavedIds } from '@/lib/stores/saves';
 import { theme } from '@/lib/theme';
-import type { CityId, Event } from '@/lib/types';
+import type { Event } from '@/lib/types';
 import { EmptyState, EventCardSkeleton, ListSectionHeader, Screen } from '@/ui';
 
 import { categoryLabel } from './categories';
@@ -16,12 +18,8 @@ import { FilterBar } from './FilterBar';
 import { useDiscoverFeed, type EventSection } from './useDiscoverFeed';
 
 // Discover feed — the populated list (frame 177:832), the no-match empty state
-// (272:1353) and the skeleton loading state (273:1388). City is fixed to Belgrade
-// until the city picker + profile store land; save state is local-only for now.
-
-// Active city placeholder (manual city picker writes this to the profile later).
-const ACTIVE_CITY: CityId = 'belgrade';
-const CITY_LABEL = 'Belgrade, RS';
+// (272:1353) and the skeleton loading state (273:1388). City scope comes from
+// the shared city store (set via the picker); save state is local-only for now.
 
 // Clearance so the last card scrolls clear of the floating glass TabBar capsule
 // (≈48pt tall, sitting above the safe-area inset) instead of hiding behind it.
@@ -32,8 +30,12 @@ export function DiscoverScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
+  // City scope drives the feed query + the header pill; switching it in the
+  // picker re-derives the sections (useDiscoverFeed memoizes on city).
+  const activeCity = useActiveCity();
+
   const { filters, sections, cycleCategory, cycleDate, toggleFree, clearFilters } =
-    useDiscoverFeed(ACTIVE_CITY);
+    useDiscoverFeed(activeCity);
 
   // Save state now lives in the shared store so the feed, Event Detail and the
   // Saved screen all reflect the same set (CLAUDE.md: saves are per-user; the
@@ -79,7 +81,7 @@ export function DiscoverScreen() {
   return (
     <Screen>
       <DiscoverHeader
-        cityLabel={CITY_LABEL}
+        cityLabel={cityHeaderLabel(activeCity)}
         onCityPress={() => router.push('/city')}
         onSearchPress={() => router.push('/search')}
       />

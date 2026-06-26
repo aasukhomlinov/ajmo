@@ -12,6 +12,11 @@ export default function HomeScreen() {
       {/* Temporary dev entries — remove once the auth gate becomes the entry point. */}
       <Button label="Open app (tabs)" onPress={() => router.push('/discover')} />
       <Button
+        label="Onboarding: city"
+        type="secondary"
+        onPress={() => router.push('/onboarding/city')}
+      />
+      <Button
         label="Event reminders"
         type="secondary"
         onPress={() => router.push('/reminders')}
