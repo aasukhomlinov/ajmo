@@ -138,7 +138,8 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   filterWrap: {
-    paddingHorizontal: theme.spacing.lg,
+    // No horizontal padding here: the FilterBar is a full-width horizontal
+    // ScrollView that owns its own side padding (so chips scroll edge to edge).
     paddingTop: theme.spacing.lg,
   },
   cardWrap: {

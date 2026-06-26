@@ -128,7 +128,7 @@ export function BottomSheet({ visible, onClose, title, footer, children }: Botto
           style={[
             styles.sheet,
             {
-              paddingBottom: insets.bottom + theme.spacing.lg,
+              paddingBottom: insets.bottom + theme.spacing['2xl'],
               opacity: fade,
               transform: [{ translateY }],
             },

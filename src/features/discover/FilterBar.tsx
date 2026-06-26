@@ -1,6 +1,6 @@
-import { CalendarBlank, SlidersHorizontal, Tag } from 'phosphor-react-native';
+import { CalendarBlank, SquaresFour, Tag } from 'phosphor-react-native';
 import { useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 
 import { theme } from '@/lib/theme';
 import type { EventCategory } from '@/lib/types';
@@ -11,10 +11,11 @@ import { CategoryFilterSheet } from './CategoryFilterSheet';
 import { DateFilterSheet } from './DateFilterSheet';
 import { DATE_OPTION_LABELS, type DateFilter, type DiscoverFilters } from './useDiscoverFeed';
 
-// Discover filter row (app frame node 177:978): three filter chips over the
-// mock data. Category + Date open bottom-sheets (multi-select grid / single
-// preset); the free chip stays an inline toggle. A chip shows its active lime
-// state — and a label reflecting the current selection — when a filter is set.
+// Discover filter row (app frame node 177:978): a single horizontally-scrolling
+// row of filter chips over the mock data — never wraps. Category + Date open
+// bottom-sheets (multi-select grid / single preset); the free chip stays an
+// inline toggle. A chip shows its active lime state — and a label reflecting the
+// current selection — when a filter is set.
 
 export interface FilterBarProps {
   filters: DiscoverFilters;
@@ -39,19 +40,19 @@ export function FilterBar({
       : categoryCount === 1
         ? CATEGORY_META[filters.categories[0]].label
         : `${categoryCount} categories`;
-  // A single selection borrows that category's glyph; none/many fall back to the
-  // generic sliders icon.
-  const categoryIcon =
-    categoryCount === 1 ? CATEGORY_META[filters.categories[0]].icon : SlidersHorizontal;
 
   const dateLabel = filters.date === 'any' ? 'Any date' : DATE_OPTION_LABELS[filters.date];
 
   return (
     <>
-      <View style={styles.row}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={styles.row}
+      >
         <Chip
           label={categoryLabel}
-          leftIcon={categoryIcon}
+          leftIcon={SquaresFour}
           active={categoryCount > 0}
           onPress={() => setCategorySheet(true)}
         />
@@ -67,7 +68,7 @@ export function FilterBar({
           active={filters.freeOnly}
           onPress={onToggleFree}
         />
-      </View>
+      </ScrollView>
 
       <CategoryFilterSheet
         visible={categorySheet}
@@ -88,8 +89,8 @@ export function FilterBar({
 const styles = StyleSheet.create({
   row: {
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    alignItems: 'flex-start',
+    alignItems: 'center',
     gap: theme.spacing.sm,
+    paddingHorizontal: theme.spacing.lg,
   },
 });
