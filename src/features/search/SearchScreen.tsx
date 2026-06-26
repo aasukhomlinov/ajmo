@@ -6,7 +6,7 @@ import { FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import { dateChipLabel } from '@/lib/datetime';
 import { theme } from '@/lib/theme';
 import type { CityId, Event } from '@/lib/types';
-import { Chip, EmptyState, EventRowSkeleton, Input, Screen, Text } from '@/ui';
+import { Chip, EmptyState, EventRowSkeleton, Header, Input, Screen, Text } from '@/ui';
 
 import { EventRow } from '../discover/EventRow';
 import { useRecentSearches } from './useRecentSearches';
@@ -15,8 +15,9 @@ import { useSearch } from './useSearch';
 // Search screen (frames 185:603 / 187:674 / 189:711 / 190:803). A focused search
 // field over a state machine: empty (recent + popular) → typing (skeletons) →
 // results (EventRow list) / no-results (EmptyState). Client-side over MOCK_EVENTS,
-// scoped to the active city; recent searches are local-only. No native header —
-// the search bar is the top of the screen (Stack headerShown:false).
+// scoped to the active city; recent searches are local-only. A compact Header
+// (back + centered "Search") sits above the field in every state: the back arrow
+// exits to Discover, while the in-field clear (X) only clears the query.
 
 // Active city placeholder — mirrors DiscoverScreen until the city picker + profile
 // store land (CLAUDE.md: every query is scoped by the active city_id).
@@ -61,6 +62,7 @@ export function SearchScreen() {
 
   return (
     <Screen>
+      <Header title="Search" variant="compact" onBack={() => router.back()} />
       <View style={styles.searchBar}>
         <Input
           type="text"
