@@ -10,6 +10,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { queryClient } from '@/lib/queryClient';
 import { useCity } from '@/lib/stores/city';
 import { useSaves } from '@/lib/stores/saves';
+import { useSettings } from '@/lib/stores/settings';
 import { theme } from '@/lib/theme';
 
 SplashScreen.preventAutoHideAsync();
@@ -34,12 +35,13 @@ export default function RootLayout() {
     }
   }, [fontsLoaded, fontError]);
 
-  // Load persisted saves + active city once so the feed/detail/Saved screen and
-  // the city scope reflect them on launch (local stores; swap to per-user
-  // Supabase queries later).
+  // Load persisted saves + active city + app settings once so the feed/detail/
+  // Saved screen, the city scope and the Profile settings reflect them on launch
+  // (local stores; swap to per-user Supabase queries later).
   useEffect(() => {
     void useSaves.getState().hydrate();
     void useCity.getState().hydrate();
+    void useSettings.getState().hydrate();
   }, []);
 
   if (!fontsLoaded && !fontError) {
