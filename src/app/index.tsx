@@ -19,7 +19,7 @@ export default function HomeScreen() {
       <Button
         label="Event reminders"
         type="secondary"
-        onPress={() => router.push('/reminders')}
+        onPress={() => router.push('/profile/reminders')}
       />
       <Button
         label="UI Gallery"
