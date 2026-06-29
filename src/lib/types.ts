@@ -11,7 +11,12 @@ export type LanguageCode = 'en' | 'ru' | 'sr';
 /** Per-language strings for an event field; any language may be absent. */
 export type LocalizedText = Partial<Record<LanguageCode, string>>;
 
-/** Event taxonomy used by the category filter and the cover badge. */
+/**
+ * Event taxonomy (mirrors the DB `event_category` enum). The first seven are the
+ * curated filter categories; `other` is the catch-all the parser assigns to
+ * lectures / games nights / workshops etc. — it renders as an "Other" badge but
+ * is intentionally NOT offered as a filter chip (see CATEGORY_ORDER).
+ */
 export type EventCategory =
   | 'music'
   | 'party'
@@ -19,7 +24,8 @@ export type EventCategory =
   | 'food'
   | 'cinema'
   | 'theatre'
-  | 'market';
+  | 'market'
+  | 'other';
 
 export interface Venue {
   name: string;
