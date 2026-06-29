@@ -5,6 +5,12 @@
 /** City scope. Stored on the user's profile; every event/search query filters by it. */
 export type CityId = 'belgrade' | 'novi-sad';
 
+/** Language codes for localized event content (matches the profile language ids). */
+export type LanguageCode = 'en' | 'ru' | 'sr';
+
+/** Per-language strings for an event field; any language may be absent. */
+export type LocalizedText = Partial<Record<LanguageCode, string>>;
+
 /** Event taxonomy used by the category filter and the cover badge. */
 export type EventCategory =
   | 'music'
@@ -36,8 +42,17 @@ export interface Event {
   id: string;
   city: CityId;
   venue: Venue;
+  /** Title resolved for the active language (falls back to any available language). */
   title: string;
+  /** Description resolved for the active language (falls back to any available language). */
   description: string;
+  /**
+   * Raw per-language content, as stored. `title`/`description` above are the
+   * resolved display strings; these carry every translation the source had
+   * (used when re-resolving for a different language).
+   */
+  title_i18n?: LocalizedText;
+  description_i18n?: LocalizedText;
   category: EventCategory;
   /** ISO-8601 instant. Start of the event. */
   starts_at: string;

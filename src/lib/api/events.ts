@@ -2,7 +2,8 @@ import { useQuery } from '@tanstack/react-query';
 import { startOfDay } from 'date-fns';
 
 import { supabase } from '@/lib/supabase';
-import type { CityId, Event, EventCategory } from '@/lib/types';
+import { useLanguage } from '@/lib/stores/settings';
+import type { CityId, Event, EventCategory, LanguageCode, LocalizedText } from '@/lib/types';
 
 // Supabase read layer for events (Phase 5 — replaces src/lib/mocks/events.ts as
 // the live data source). Every row is mapped back into the shared `Event` shape
@@ -17,6 +18,8 @@ const EVENT_SELECT = `
   id,
   title,
   description,
+  title_i18n,
+  description_i18n,
   category,
   starts_at,
   ends_at,
@@ -27,6 +30,23 @@ const EVENT_SELECT = `
   venues!inner ( name, address, lat, lng ),
   cities!inner ( slug )
 ` as const;
+
+// Order in which to look for a usable translation when the active language is
+// missing. Mirrors the profile language catalog.
+const LANGUAGE_FALLBACK_ORDER: LanguageCode[] = ['en', 'ru', 'sr'];
+
+/** Pick the active language's text, else any available language, else the scalar fallback. */
+function localize(i18n: LocalizedText | null, lang: LanguageCode, fallback: string): string {
+  if (i18n) {
+    const chosen = i18n[lang];
+    if (chosen) return chosen;
+    for (const code of LANGUAGE_FALLBACK_ORDER) {
+      const value = i18n[code];
+      if (value) return value;
+    }
+  }
+  return fallback;
+}
 
 interface RawVenue {
   name: string;
@@ -39,6 +59,8 @@ interface RawEventRow {
   id: string;
   title: string;
   description: string | null;
+  title_i18n: LocalizedText | null;
+  description_i18n: LocalizedText | null;
   category: string;
   starts_at: string;
   ends_at: string | null;
@@ -64,7 +86,7 @@ function one<T>(value: T | T[] | null): T | null {
  * `covers` is only set for true galleries (matches the fixture: single-image
  * events omit it and Event Detail falls back to [cover_url]).
  */
-function mapEventRow(row: RawEventRow): Event {
+function mapEventRow(row: RawEventRow, lang: LanguageCode): Event {
   const venue = one(row.venues);
   const city = one(row.cities);
   const covers = row.covers ?? [];
@@ -78,8 +100,10 @@ function mapEventRow(row: RawEventRow): Event {
       lat: venue?.lat ?? 0,
       lng: venue?.lng ?? 0,
     },
-    title: row.title,
-    description: row.description ?? '',
+    title: localize(row.title_i18n, lang, row.title),
+    description: localize(row.description_i18n, lang, row.description ?? ''),
+    title_i18n: row.title_i18n ?? undefined,
+    description_i18n: row.description_i18n ?? undefined,
     category: row.category as EventCategory,
     starts_at: row.starts_at,
     ends_at: row.ends_at ?? undefined,
@@ -91,15 +115,17 @@ function mapEventRow(row: RawEventRow): Event {
   };
 }
 
+// Keys carry the active language so switching it re-resolves content (the rows
+// are the same; only the localized title/description differ).
 export const eventKeys = {
   all: ['events'] as const,
-  city: (city: CityId) => ['events', 'city', city] as const,
-  detail: (id: string) => ['events', 'detail', id] as const,
-  byIds: (ids: string[]) => ['events', 'byIds', ids] as const,
+  city: (city: CityId, lang: LanguageCode) => ['events', 'city', city, lang] as const,
+  detail: (id: string, lang: LanguageCode) => ['events', 'detail', id, lang] as const,
+  byIds: (ids: string[], lang: LanguageCode) => ['events', 'byIds', ids, lang] as const,
 };
 
 /** Published, upcoming events for a city, soonest first. City scope is a query param. */
-async function fetchCityEvents(city: CityId): Promise<Event[]> {
+async function fetchCityEvents(city: CityId, lang: LanguageCode): Promise<Event[]> {
   const { data, error } = await supabase
     .from('events')
     .select(EVENT_SELECT)
@@ -109,11 +135,11 @@ async function fetchCityEvents(city: CityId): Promise<Event[]> {
     .order('starts_at', { ascending: true });
 
   if (error) throw error;
-  return (data as unknown as RawEventRow[]).map(mapEventRow);
+  return (data as unknown as RawEventRow[]).map((row) => mapEventRow(row, lang));
 }
 
 /** A single published event by id, or null when missing/hidden. */
-async function fetchEventById(id: string): Promise<Event | null> {
+async function fetchEventById(id: string, lang: LanguageCode): Promise<Event | null> {
   const { data, error } = await supabase
     .from('events')
     .select(EVENT_SELECT)
@@ -122,7 +148,7 @@ async function fetchEventById(id: string): Promise<Event | null> {
     .maybeSingle();
 
   if (error) throw error;
-  return data ? mapEventRow(data as unknown as RawEventRow) : null;
+  return data ? mapEventRow(data as unknown as RawEventRow, lang) : null;
 }
 
 /**
@@ -130,7 +156,7 @@ async function fetchEventById(id: string): Promise<Event | null> {
  * upcoming-filtered — saves are a flat, cross-city bookmark list and may point
  * at events that have already started.
  */
-async function fetchEventsByIds(ids: string[]): Promise<Event[]> {
+async function fetchEventsByIds(ids: string[], lang: LanguageCode): Promise<Event[]> {
   const { data, error } = await supabase
     .from('events')
     .select(EVENT_SELECT)
@@ -138,33 +164,36 @@ async function fetchEventsByIds(ids: string[]): Promise<Event[]> {
     .in('id', ids);
 
   if (error) throw error;
-  return (data as unknown as RawEventRow[]).map(mapEventRow);
+  return (data as unknown as RawEventRow[]).map((row) => mapEventRow(row, lang));
 }
 
-/** Reactive feed source for a city. Discover/Search compose filters over this. */
+/** Reactive feed source for a city, in the active language. Discover/Search compose filters over this. */
 export function useEvents(city: CityId) {
+  const lang = useLanguage();
   return useQuery({
-    queryKey: eventKeys.city(city),
-    queryFn: () => fetchCityEvents(city),
+    queryKey: eventKeys.city(city, lang),
+    queryFn: () => fetchCityEvents(city, lang),
   });
 }
 
 /** Reactive single-event query for the Event Detail route. */
 export function useEvent(id: string | undefined) {
+  const lang = useLanguage();
   return useQuery({
-    queryKey: eventKeys.detail(id ?? ''),
-    queryFn: () => fetchEventById(id as string),
+    queryKey: eventKeys.detail(id ?? '', lang),
+    queryFn: () => fetchEventById(id as string, lang),
     enabled: Boolean(id),
   });
 }
 
 /** Reactive lookup of the saved events. Disabled (no fetch) when nothing is saved. */
 export function useSavedEvents(ids: string[]) {
+  const lang = useLanguage();
   // Stable key regardless of insertion order so re-saving doesn't refetch.
   const sorted = [...ids].sort();
   return useQuery({
-    queryKey: eventKeys.byIds(sorted),
-    queryFn: () => fetchEventsByIds(sorted),
+    queryKey: eventKeys.byIds(sorted, lang),
+    queryFn: () => fetchEventsByIds(sorted, lang),
     enabled: sorted.length > 0,
   });
 }
