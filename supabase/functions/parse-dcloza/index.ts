@@ -366,6 +366,106 @@ function compact(loc: Localized): Record<string, string> {
   return out;
 }
 
+const STORAGE_BUCKET = 'event-covers';
+const PUBLIC_OBJECT_MARKER = '/storage/v1/object/public/';
+
+/**
+ * Download a Telegram cover and re-host it in Supabase Storage, returning the
+ * durable public URL. Telegram CDN URLs (cdn*.telesco.pe) aren't permanent, so
+ * covers we keep must live in our own bucket.
+ *
+ * Idempotent: an already-rehosted Supabase URL is returned untouched, and the
+ * upload upserts a stable key (dcloza/<messageId>.jpg). Throws on download /
+ * upload failure so the caller can log it and fall back to a null cover.
+ */
+async function rehostCover(
+  admin: ReturnType<typeof createClient>,
+  messageId: number,
+  sourceUrl: string | null,
+): Promise<string | null> {
+  if (!sourceUrl) return null;
+  if (sourceUrl.includes(PUBLIC_OBJECT_MARKER)) return sourceUrl; // already in our bucket
+
+  const key = `dcloza/${messageId}.jpg`;
+  const imgRes = await fetch(sourceUrl);
+  if (!imgRes.ok) throw new Error(`cover download ${imgRes.status}`);
+  const bytes = new Uint8Array(await imgRes.arrayBuffer());
+
+  const { error } = await admin.storage.from(STORAGE_BUCKET).upload(key, bytes, {
+    contentType: imgRes.headers.get('content-type') ?? 'image/jpeg',
+    upsert: true,
+  });
+  if (error) throw error;
+
+  return admin.storage.from(STORAGE_BUCKET).getPublicUrl(key).data.publicUrl;
+}
+
+/**
+ * One-off maintenance: re-host the covers of events already in the DB whose cover
+ * still points at Telegram's CDN. Image fetch + upload only — no Claude calls.
+ * Idempotent (skips covers already in our bucket).
+ */
+async function rehostExistingCovers(admin: ReturnType<typeof createClient>): Promise<Response> {
+  const { data: source } = await admin
+    .from('sources')
+    .select('venue_id')
+    .eq('handle', 'dcloza')
+    .single();
+  if (!source) {
+    return Response.json({ ok: false, error: "source 'dcloza' not found" }, { status: 500 });
+  }
+
+  const { data: rows } = await admin
+    .from('events')
+    .select('id, source_ref, covers')
+    .eq('venue_id', source.venue_id);
+
+  let rehosted = 0;
+  let skipped = 0;
+  let failed = 0;
+  const failures: string[] = [];
+
+  for (const ev of rows ?? []) {
+    const current: string | null = ev.covers?.[0] ?? null;
+    if (!current || current.includes(PUBLIC_OBJECT_MARKER)) {
+      skipped += 1; // no cover, or already in our bucket
+      continue;
+    }
+    const messageId = Number(String(ev.source_ref ?? '').replace('dcloza:', ''));
+    try {
+      const url = await rehostCover(admin, messageId, current);
+      if (!url) {
+        skipped += 1;
+        continue;
+      }
+      await admin.from('events').update({ covers: [url] }).eq('id', ev.id);
+      rehosted += 1;
+    } catch (e) {
+      failed += 1;
+      failures.push(`${ev.source_ref}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  await admin.from('ingest_runs').insert({
+    source_handle: 'dcloza-rehost',
+    found: (rows ?? []).length,
+    inserted: rehosted,
+    errors: failed,
+    error_detail: failures.length ? failures.join(' | ') : null,
+    finished_at: new Date().toISOString(),
+  });
+
+  return Response.json({
+    ok: true,
+    mode: 'rehost',
+    total: (rows ?? []).length,
+    rehosted,
+    skipped,
+    failed,
+    failures,
+  });
+}
+
 // ── Handler ──────────────────────────────────────────────────────────────────
 Deno.serve(async (req) => {
   // Cost controls for testing: ?only=<messageId> processes exactly that post
@@ -373,12 +473,16 @@ Deno.serve(async (req) => {
   const params = new URL(req.url).searchParams;
   const onlyId = params.get('only');
   const limit = params.get('limit');
+  const rehostMode = params.has('rehost');
 
   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
   const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY');
-
   const admin = createClient(supabaseUrl, serviceKey);
+
+  // Maintenance mode: re-host existing covers off Telegram CDN (no Claude calls).
+  if (rehostMode) return await rehostExistingCovers(admin);
+
+  const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY');
   const counters = {
     found: 0,
     inserted: 0,
@@ -489,6 +593,17 @@ Deno.serve(async (req) => {
         continue;
       }
 
+      // Re-host the cover into Supabase Storage so it doesn't depend on Telegram's
+      // CDN. On failure keep the event with a null cover (don't fail the run).
+      let coverUrl: string | null = null;
+      if (post.coverUrl) {
+        try {
+          coverUrl = await rehostCover(admin, post.messageId, post.coverUrl);
+        } catch (e) {
+          errorDetails.push(`#${post.messageId} cover: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+
       const status = ex.confidence < PUBLISH_CONFIDENCE ? 'draft' : 'published';
 
       const { data: insertedRow, error: insErr } = await admin
@@ -504,7 +619,7 @@ Deno.serve(async (req) => {
           starts_at: startsAt,
           price_text: ex.price_text,
           is_free: ex.is_free,
-          covers: post.coverUrl ? [post.coverUrl] : null,
+          covers: coverUrl ? [coverUrl] : null,
           source_type: 'telegram',
           source_url: `https://t.me/dcloza/${post.messageId}`,
           source_ref: sourceRef,
@@ -546,7 +661,7 @@ Deno.serve(async (req) => {
           price_text: ex.price_text,
           is_free: ex.is_free,
           confidence: ex.confidence,
-          cover_url: post.coverUrl,
+          cover_url: coverUrl,
           title_i18n: ex.title_i18n,
           description_i18n: ex.description_i18n,
           post_text: post.text,
