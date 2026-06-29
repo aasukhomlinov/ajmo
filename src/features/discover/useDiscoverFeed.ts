@@ -11,14 +11,14 @@ import {
 } from 'date-fns';
 import { useCallback, useMemo, useState } from 'react';
 
+import { useEvents } from '@/lib/api/events';
 import { dayKey, daySectionLabel } from '@/lib/datetime';
-import { MOCK_EVENTS } from '@/lib/mocks/events';
 import type { CityId, Event, EventCategory } from '@/lib/types';
 
 // Client-side feed state for Discover: filter selections + the derived,
-// day-grouped sections fed to the SectionList. The data source is the mock
-// fixture today; swapping to a Supabase query means replacing `MOCK_EVENTS`
-// with the query result and keeping everything below identical.
+// day-grouped sections fed to the SectionList. City-scoped, upcoming events come
+// from Supabase via `useEvents(city)`; the category / date / free filters and the
+// day grouping below run client-side over those rows.
 
 export type DateFilter =
   | 'any'
@@ -98,16 +98,17 @@ function matchesDate(event: Event, filter: DateFilter, now: Date): boolean {
   return startsAt >= range.start && startsAt <= range.end;
 }
 
-function buildSections(city: CityId, filters: DiscoverFilters): EventSection[] {
+function buildSections(events: Event[], filters: DiscoverFilters): EventSection[] {
   const now = new Date();
 
-  const filtered = MOCK_EVENTS.filter(
-    (e) =>
-      e.city === city &&
-      (filters.categories.length === 0 || filters.categories.includes(e.category)) &&
-      (!filters.freeOnly || e.is_free) &&
-      matchesDate(e, filters.date, now),
-  ).sort((a, b) => a.starts_at.localeCompare(b.starts_at));
+  const filtered = events
+    .filter(
+      (e) =>
+        (filters.categories.length === 0 || filters.categories.includes(e.category)) &&
+        (!filters.freeOnly || e.is_free) &&
+        matchesDate(e, filters.date, now),
+    )
+    .sort((a, b) => a.starts_at.localeCompare(b.starts_at));
 
   const byDay = new Map<string, Event[]>();
   for (const event of filtered) {
@@ -127,7 +128,13 @@ function buildSections(city: CityId, filters: DiscoverFilters): EventSection[] {
 export function useDiscoverFeed(city: CityId) {
   const [filters, setFilters] = useState<DiscoverFilters>(DEFAULT_FILTERS);
 
-  const sections = useMemo(() => buildSections(city, filters), [city, filters]);
+  // City-scoped, upcoming events from Supabase; filters/grouping run over them.
+  const { data, isLoading, isError, refetch } = useEvents(city);
+
+  const sections = useMemo(
+    () => buildSections(data ?? [], filters),
+    [data, filters],
+  );
 
   // The filter sheets commit a whole selection on "Apply"; the free chip stays
   // an inline toggle. Clearing resets every facet at once.
@@ -146,6 +153,9 @@ export function useDiscoverFeed(city: CityId) {
     filters,
     sections,
     isFiltered,
+    isLoading,
+    isError,
+    refetch,
     setCategories,
     setDate,
     toggleFree,

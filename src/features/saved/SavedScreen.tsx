@@ -3,25 +3,26 @@ import { useMemo } from 'react';
 import { FlatList, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { MOCK_EVENTS } from '@/lib/mocks/events';
+import { useSavedEvents } from '@/lib/api/events';
 import { useSaves, useSavedIds } from '@/lib/stores/saves';
 import { theme } from '@/lib/theme';
 import type { Event } from '@/lib/types';
-import { EmptyState, Header, Screen } from '@/ui';
+import { EmptyState, EventRowSkeleton, Header, Screen } from '@/ui';
 
 import { SavedRow } from './SavedRow';
 
 // Saved tab (app frames Saved 160:221 / Saved — Empty 166:300). A flat, shared
 // list of the user's bookmarked events: Header "Saved" + a column of EventRow
-// (the square-thumb single-line row), derived from the shared save store. Empty
-// when nothing is saved. The list is NOT city-scoped — saves are a flat
-// cross-city bookmark list (CLAUDE.md: "the Saved list is flat"), unlike the
-// city-scoped Discover/Search feeds. Swap MOCK_EVENTS for the per-user Supabase
-// query when auth lands; the store already holds the saved ids.
+// (the square-thumb single-line row). The saved ids come from the local store;
+// the event rows themselves are resolved from Supabase by id. The list is NOT
+// city-scoped — saves are a flat cross-city bookmark list (CLAUDE.md: "the Saved
+// list is flat"), unlike the city-scoped Discover/Search feeds. When auth lands
+// the id set moves to a per-user Supabase table; this fetch-by-id stays.
 
 // Clearance so the last row scrolls clear of the floating glass TabBar capsule
 // (mirrors DiscoverScreen).
 const TAB_BAR_SPACE = theme.spacing['5xl'] + theme.spacing.lg;
+const SKELETON_COUNT = 4;
 
 export function SavedScreen() {
   const router = useRouter();
@@ -29,25 +30,42 @@ export function SavedScreen() {
   const savedIds = useSavedIds();
   const toggleSave = useSaves((s) => s.toggleSave);
 
-  // Derive the saved events from the store, soonest-first (ISO strings sort
-  // chronologically). Recomputes whenever the saved set changes, so unsaving an
-  // event anywhere removes its row here.
+  // The store holds the ids; the rows are fetched from Supabase by id.
+  const ids = useMemo(() => Array.from(savedIds), [savedIds]);
+  const { data, isLoading, isError, refetch } = useSavedEvents(ids);
+
+  // Soonest-first (ISO strings sort chronologically). Recomputes whenever the
+  // fetched rows change, so unsaving an event anywhere removes its row here.
   const savedEvents = useMemo(
-    () =>
-      MOCK_EVENTS.filter((event) => savedIds.has(event.id)).sort((a, b) =>
-        a.starts_at.localeCompare(b.starts_at),
-      ),
-    [savedIds],
+    () => [...(data ?? [])].sort((a, b) => a.starts_at.localeCompare(b.starts_at)),
+    [data],
   );
 
   const openEvent = (id: string) =>
     router.push({ pathname: '/event/[id]', params: { id } });
 
+  const hasSaves = ids.length > 0;
+
   return (
     <Screen>
       <Header title="Saved" />
 
-      {savedEvents.length === 0 ? (
+      {isError ? (
+        <View style={styles.emptyWrap}>
+          <EmptyState
+            title="Couldn’t load saved events"
+            description="Check your connection and try again."
+            actionLabel="Retry"
+            onAction={() => refetch()}
+          />
+        </View>
+      ) : hasSaves && isLoading ? (
+        <View style={styles.skeletons}>
+          {Array.from({ length: SKELETON_COUNT }, (_, i) => (
+            <EventRowSkeleton key={i} />
+          ))}
+        </View>
+      ) : savedEvents.length === 0 ? (
         <View style={styles.emptyWrap}>
           <EmptyState
             title="No saved events yet"
@@ -94,6 +112,12 @@ const styles = StyleSheet.create({
   },
   separator: {
     height: theme.spacing.md,
+  },
+  skeletons: {
+    flex: 1,
+    gap: theme.spacing.md,
+    paddingHorizontal: theme.spacing.lg,
+    paddingTop: theme.spacing.md,
   },
   emptyWrap: {
     flex: 1,

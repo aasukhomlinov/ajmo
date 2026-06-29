@@ -1,5 +1,5 @@
 import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback } from 'react';
 import { SectionList, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -34,22 +34,23 @@ export function DiscoverScreen() {
   // picker re-derives the sections (useDiscoverFeed memoizes on city).
   const activeCity = useActiveCity();
 
-  const { filters, sections, setCategories, setDate, toggleFree, clearFilters } =
-    useDiscoverFeed(activeCity);
+  const {
+    filters,
+    sections,
+    isLoading,
+    isError,
+    refetch,
+    setCategories,
+    setDate,
+    toggleFree,
+    clearFilters,
+  } = useDiscoverFeed(activeCity);
 
   // Save state now lives in the shared store so the feed, Event Detail and the
   // Saved screen all reflect the same set (CLAUDE.md: saves are per-user; the
   // store swaps to a Supabase mutation later).
   const savedIds = useSavedIds();
   const toggleSave = useSaves((s) => s.toggleSave);
-
-  // Stand-in for react-query's `isLoading` so the skeleton state is exercised on
-  // mount. Replaced by the real query status when the feed query lands.
-  const [isLoading, setIsLoading] = useState(true);
-  useEffect(() => {
-    const timer = setTimeout(() => setIsLoading(false), 650);
-    return () => clearTimeout(timer);
-  }, []);
 
   const renderItem = useCallback(
     ({ item }: { item: Event }) => (
@@ -91,6 +92,15 @@ export function DiscoverScreen() {
           {Array.from({ length: SKELETON_COUNT }, (_, i) => (
             <EventCardSkeleton key={i} />
           ))}
+        </View>
+      ) : isError ? (
+        <View style={styles.emptyWrap}>
+          <EmptyState
+            title="Couldn’t load events"
+            description="Check your connection and try again."
+            actionLabel="Retry"
+            onAction={() => refetch()}
+          />
         </View>
       ) : sections.length === 0 ? (
         <View style={styles.emptyWrap}>

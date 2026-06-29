@@ -4,8 +4,9 @@ import { useCallback } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { dateChipLabel } from '@/lib/datetime';
+import { useActiveCity } from '@/lib/stores/city';
 import { theme } from '@/lib/theme';
-import type { CityId, Event } from '@/lib/types';
+import type { Event } from '@/lib/types';
 import { Chip, EmptyState, EventRowSkeleton, Header, Input, Screen, Text } from '@/ui';
 
 import { EventRow } from '../discover/EventRow';
@@ -14,21 +15,19 @@ import { useSearch } from './useSearch';
 
 // Search screen (frames 185:603 / 187:674 / 189:711 / 190:803). A focused search
 // field over a state machine: empty (recent + popular) → typing (skeletons) →
-// results (EventRow list) / no-results (EmptyState). Client-side over MOCK_EVENTS,
-// scoped to the active city; recent searches are local-only. A compact Header
-// (back + centered "Search") sits above the field in every state: the back arrow
-// exits to Discover, while the in-field clear (X) only clears the query.
-
-// Active city placeholder — mirrors DiscoverScreen until the city picker + profile
-// store land (CLAUDE.md: every query is scoped by the active city_id).
-const ACTIVE_CITY: CityId = 'belgrade';
+// results (EventRow list) / no-results (EmptyState). Searches the city's upcoming
+// events from Supabase (via useSearch → useEvents), scoped to the active city;
+// recent searches are local-only. A compact Header (back + centered "Search")
+// sits above the field in every state: the back arrow exits to Discover, while
+// the in-field clear (X) only clears the query.
 
 // Search · Typing shows three loading rows.
 const SKELETON_COUNT = 3;
 
 export function SearchScreen() {
   const router = useRouter();
-  const { query, setQuery, status, results, popular } = useSearch(ACTIVE_CITY);
+  const activeCity = useActiveCity();
+  const { query, setQuery, status, results, popular } = useSearch(activeCity);
   const { recent, addRecent } = useRecentSearches();
 
   const openEvent = useCallback(

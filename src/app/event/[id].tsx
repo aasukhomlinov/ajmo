@@ -2,24 +2,36 @@ import { useLocalSearchParams, useRouter } from 'expo-router';
 import { StyleSheet } from 'react-native';
 
 import { EventDetailScreen } from '@/features/event/EventDetailScreen';
-import { MOCK_EVENTS } from '@/lib/mocks/events';
-import { EmptyState, Screen } from '@/ui';
+import { useEvent } from '@/lib/api/events';
+import { EmptyState, EventCardSkeleton, Screen } from '@/ui';
 
-// /event/[id] — opened from an EventCard in the Discover feed. Resolves the id
-// against the mock feed via the shared Event type; swap MOCK_EVENTS for the
-// Supabase query once it lands (the screen takes a plain Event, so this is the
-// only line that changes).
+// /event/[id] — opened from an EventCard in the feed (or a Saved row). Resolves
+// the id against Supabase via useEvent; the screen takes a plain Event so it is
+// agnostic to the data source. Shows a skeleton while loading and an EmptyState
+// when the event is missing or the fetch fails.
 export default function EventRoute() {
   const router = useRouter();
   const { id } = useLocalSearchParams<{ id: string }>();
-  const event = MOCK_EVENTS.find((candidate) => candidate.id === id);
+  const { data: event, isLoading, isError } = useEvent(id);
 
-  if (!event) {
+  if (isLoading) {
+    return (
+      <Screen padded contentContainerStyle={styles.loading}>
+        <EventCardSkeleton />
+      </Screen>
+    );
+  }
+
+  if (isError || !event) {
     return (
       <Screen padded contentContainerStyle={styles.notFound}>
         <EmptyState
-          title="Event not found"
-          description="This event may have ended or been removed."
+          title={isError ? 'Couldn’t load event' : 'Event not found'}
+          description={
+            isError
+              ? 'Check your connection and try again.'
+              : 'This event may have ended or been removed.'
+          }
           actionLabel="Go back"
           onAction={() => router.back()}
         />
@@ -31,6 +43,9 @@ export default function EventRoute() {
 }
 
 const styles = StyleSheet.create({
+  loading: {
+    paddingTop: 24,
+  },
   notFound: {
     flex: 1,
     justifyContent: 'center',
