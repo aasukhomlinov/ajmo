@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import {
   Animated,
   StyleSheet,
@@ -21,7 +21,9 @@ const PULSE_DURATION = 800;
 // One shared pulse drives every bar in a skeleton so they breathe in sync.
 // Pass `active = false` to mint an inert value (used when a parent supplies one).
 function usePulse(active: boolean) {
-  const value = useRef(new Animated.Value(active ? PULSE_MIN : 1)).current;
+  // Lazily mint one stable Animated.Value (the useState initializer runs once).
+  // Keeping it in state rather than a ref avoids reading `.current` during render.
+  const [value] = useState(() => new Animated.Value(active ? PULSE_MIN : 1));
 
   useEffect(() => {
     if (!active) return;
