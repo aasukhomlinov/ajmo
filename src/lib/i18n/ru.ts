@@ -1,8 +1,9 @@
 import type { TranslationKey } from './en';
 
 // Russian UI copy. Kept SHORT to fit the width-constrained chips/buttons.
-// Tone: neutral вы-form (standard for Russian app UI); brand strings avoid the
-// pronoun entirely. Plural triples follow the Russian one/few/many rules
+// Tone: informal ты-form, matching sr and the colloquial brand voice ("ajmo" =
+// «погнали»); strings that read better without a pronoun keep none (tagline).
+// Plural triples follow the Russian one/few/many rules
 // (1 результат / 2 результата / 5 результатов) — see pluralForm() in index.ts.
 export const ru: Record<TranslationKey, string> = {
   'common.apply': 'Применить',
@@ -12,7 +13,7 @@ export const ru: Record<TranslationKey, string> = {
   'common.continue': 'Продолжить',
   'common.close': 'Закрыть',
   'common.dismiss': 'Закрыть',
-  'common.connectionError': 'Проверьте соединение и попробуйте ещё раз.',
+  'common.connectionError': 'Проверь соединение и попробуй ещё раз.',
   'common.filters': 'Фильтры',
 
   'tabs.discover': 'Афиша',
@@ -22,7 +23,7 @@ export const ru: Record<TranslationKey, string> = {
   'discover.errorTitle': 'Не удалось загрузить события',
   'discover.emptyTitle': 'Нет подходящих событий',
   'discover.emptyDescription':
-    'Попробуйте убрать фильтр или расширить даты — новые события добавляются каждый день.',
+    'Попробуй убрать фильтр или расширить даты — новые события добавляются каждый день.',
   'discover.clearFilters': 'Сбросить фильтры',
   'discover.searchA11y': 'Поиск событий',
   'discover.changeCityA11y': 'Сменить город — {city}',
@@ -62,7 +63,7 @@ export const ru: Record<TranslationKey, string> = {
   'search.results.many': '{count} результатов',
   'search.noResultsTitle': 'Ничего не найдено',
   'search.noResultsDescription':
-    'По запросу „{query}“ ничего не нашлось. Попробуйте изменить запрос или посмотрите все события.',
+    'По запросу „{query}“ ничего не нашлось. Попробуй изменить запрос или посмотри все события.',
   'search.browseAll': 'Все события',
 
   'event.about': 'Описание',
@@ -71,7 +72,7 @@ export const ru: Record<TranslationKey, string> = {
   'event.saved': 'Сохранено',
   'event.free': 'Бесплатно',
   'event.saveA11y': 'Сохранить событие',
-  'event.savedA11y': 'Сохранено — нажмите, чтобы убрать',
+  'event.savedA11y': 'Сохранено — нажми, чтобы убрать',
   'event.shareA11y': 'Поделиться событием',
   'event.openBrowserA11y': 'Открыть страницу события в браузере',
   'event.openMapsA11y': 'Открыть {venue} в картах',
@@ -82,14 +83,14 @@ export const ru: Record<TranslationKey, string> = {
   'saved.title': 'Сохранённое',
   'saved.errorTitle': 'Не удалось загрузить сохранённое',
   'saved.emptyTitle': 'Пока ничего не сохранено',
-  'saved.emptyDescription': 'Нажмите + на событии — и оно появится здесь.',
+  'saved.emptyDescription': 'Нажми + на событии — и оно появится здесь.',
   'saved.discoverCta': 'Смотреть события',
   'saved.removeA11y': 'Убрать {title} из сохранённого',
 
   'city.belgrade': 'Белград',
   'city.noviSad': 'Нови-Сад',
-  'city.chooseTitle': 'Выберите город',
-  'city.onboardingPrompt': 'Где вы находитесь?',
+  'city.chooseTitle': 'Выбери город',
+  'city.onboardingPrompt': 'Где ты находишься?',
   'city.sectionTitle': 'Города',
   'city.searchPlaceholder': 'Поиск города',
   'city.note': 'Пока ajmo работает только в этих городах. Скоро добавим новые!',
@@ -109,7 +110,7 @@ export const ru: Record<TranslationKey, string> = {
   'reminders.title': 'Напоминания',
   'reminders.enable': 'Включить напоминания',
   'reminders.enableDescription':
-    'Получайте уведомления, чтобы не пропускать сохранённые события',
+    'Получай уведомления, чтобы не пропускать сохранённые события',
   'reminders.notifyMe': 'Когда напоминать',
   'reminders.oneWeek': 'За неделю',
   'reminders.twoDays': 'За два дня',
