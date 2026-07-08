@@ -2,6 +2,7 @@ import { CalendarBlank, SquaresFour, Tag } from 'phosphor-react-native';
 import { useState } from 'react';
 import { ScrollView, StyleSheet } from 'react-native';
 
+import { useT } from '@/lib/i18n';
 import { theme } from '@/lib/theme';
 import type { EventCategory } from '@/lib/types';
 import { Chip } from '@/ui';
@@ -9,7 +10,7 @@ import { Chip } from '@/ui';
 import { CATEGORY_META } from './categories';
 import { CategoryFilterSheet } from './CategoryFilterSheet';
 import { DateFilterSheet } from './DateFilterSheet';
-import { DATE_OPTION_LABELS, type DateFilter, type DiscoverFilters } from './useDiscoverFeed';
+import { DATE_OPTION_KEYS, type DateFilter, type DiscoverFilters } from './useDiscoverFeed';
 
 // Discover filter row (app frame node 177:978): a single horizontally-scrolling
 // row of filter chips over the mock data — never wraps. Category + Date open
@@ -30,18 +31,19 @@ export function FilterBar({
   onApplyDate,
   onToggleFree,
 }: FilterBarProps) {
+  const t = useT();
   const [categorySheet, setCategorySheet] = useState(false);
   const [dateSheet, setDateSheet] = useState(false);
 
   const categoryCount = filters.categories.length;
   const categoryLabel =
     categoryCount === 0
-      ? 'Category'
+      ? t('filters.category')
       : categoryCount === 1
-        ? CATEGORY_META[filters.categories[0]].label
-        : `${categoryCount} categories`;
+        ? t(CATEGORY_META[filters.categories[0]].labelKey)
+        : t.count('filters.categoriesCount', categoryCount);
 
-  const dateLabel = filters.date === 'any' ? 'Any date' : DATE_OPTION_LABELS[filters.date];
+  const dateLabel = filters.date === 'any' ? t('filters.anyDate') : t(DATE_OPTION_KEYS[filters.date]);
 
   return (
     <>
@@ -63,7 +65,7 @@ export function FilterBar({
           onPress={() => setDateSheet(true)}
         />
         <Chip
-          label="Only free"
+          label={t('filters.onlyFree')}
           leftIcon={Tag}
           active={filters.freeOnly}
           onPress={onToggleFree}

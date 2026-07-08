@@ -1,6 +1,7 @@
 import { MagnifyingGlass, MapPin } from 'phosphor-react-native';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { useT } from '@/lib/i18n';
 import { theme } from '@/lib/theme';
 import { IconButton, Logo, Text } from '@/ui';
 
@@ -16,6 +17,7 @@ export interface DiscoverHeaderProps {
 }
 
 export function DiscoverHeader({ cityLabel, onCityPress, onSearchPress }: DiscoverHeaderProps) {
+  const t = useT();
   return (
     <View style={styles.header}>
       <Logo />
@@ -24,7 +26,7 @@ export function DiscoverHeader({ cityLabel, onCityPress, onSearchPress }: Discov
         <Pressable
           onPress={onCityPress}
           accessibilityRole="button"
-          accessibilityLabel={`Change city — ${cityLabel}`}
+          accessibilityLabel={t('discover.changeCityA11y', { city: cityLabel })}
           style={styles.city}
         >
           <MapPin size={20} color={theme.colors.accent.base} />
@@ -37,7 +39,7 @@ export function DiscoverHeader({ cityLabel, onCityPress, onSearchPress }: Discov
           icon={<MagnifyingGlass size={24} color={theme.colors.text.primary} />}
           variant="surface"
           onPress={onSearchPress}
-          accessibilityLabel="Search events"
+          accessibilityLabel={t('discover.searchA11y')}
         />
       </View>
     </View>

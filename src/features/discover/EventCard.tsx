@@ -1,6 +1,7 @@
 import { Check, Clock, MapPin, Plus, Ticket } from 'phosphor-react-native';
 import { Pressable, StyleSheet, View } from 'react-native';
 
+import { useT } from '@/lib/i18n';
 import { theme } from '@/lib/theme';
 import { Cover } from '@/ui/Cover';
 import { IconButton } from '@/ui/IconButton';
@@ -41,6 +42,7 @@ export function EventCard({
   onPress,
   onToggleSave,
 }: EventCardProps) {
+  const t = useT();
   return (
     <Pressable style={styles.card} onPress={onPress} accessibilityRole="button">
       <Cover
@@ -96,7 +98,7 @@ export function EventCard({
             }
             variant="surface"
             onPress={onToggleSave}
-            accessibilityLabel={saved ? 'Saved — tap to remove' : 'Save event'}
+            accessibilityLabel={saved ? t('event.savedA11y') : t('event.saveA11y')}
             style={saved ? styles.saveActive : undefined}
           />
         </View>

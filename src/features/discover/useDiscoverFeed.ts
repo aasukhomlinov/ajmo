@@ -13,6 +13,8 @@ import { useCallback, useMemo, useState } from 'react';
 
 import { useEvents } from '@/lib/api/events';
 import { dayKey, daySectionLabel } from '@/lib/datetime';
+import type { TranslationKey } from '@/lib/i18n';
+import { useLanguage, type LanguageId } from '@/lib/stores/settings';
 import type { CityId, Event, EventCategory } from '@/lib/types';
 
 // Client-side feed state for Discover: filter selections + the derived,
@@ -43,14 +45,15 @@ export interface EventSection {
   data: Event[];
 }
 
-// Radio labels for the Date sheet, in display order (frame node 178:724).
-export const DATE_OPTION_LABELS: Record<DateFilter, string> = {
-  any: 'Any Time',
-  today: 'Today',
-  'this-week': 'This Week',
-  'next-week': 'Next Week',
-  'this-month': 'This Month',
-  'next-month': 'Next Month',
+// Radio label keys for the Date sheet, in display order (frame node 178:724).
+// Render via t(DATE_OPTION_KEYS[option]).
+export const DATE_OPTION_KEYS: Record<DateFilter, TranslationKey> = {
+  any: 'date.any',
+  today: 'date.today',
+  'this-week': 'date.thisWeek',
+  'next-week': 'date.nextWeek',
+  'this-month': 'date.thisMonth',
+  'next-month': 'date.nextMonth',
 };
 
 export const DATE_OPTION_ORDER: DateFilter[] = [
@@ -98,7 +101,11 @@ function matchesDate(event: Event, filter: DateFilter, now: Date): boolean {
   return startsAt >= range.start && startsAt <= range.end;
 }
 
-function buildSections(events: Event[], filters: DiscoverFilters): EventSection[] {
+function buildSections(
+  events: Event[],
+  filters: DiscoverFilters,
+  lang: LanguageId,
+): EventSection[] {
   const now = new Date();
 
   const filtered = events
@@ -120,7 +127,7 @@ function buildSections(events: Event[], filters: DiscoverFilters): EventSection[
 
   return Array.from(byDay, ([key, data]) => ({
     key,
-    title: daySectionLabel(data[0].starts_at),
+    title: daySectionLabel(data[0].starts_at, lang),
     data,
   }));
 }
@@ -131,9 +138,11 @@ export function useDiscoverFeed(city: CityId) {
   // City-scoped, upcoming events from Supabase; filters/grouping run over them.
   const { data, isLoading, isError, refetch } = useEvents(city);
 
+  // Day headers carry localized weekday/month words — rebuild on language change.
+  const lang = useLanguage();
   const sections = useMemo(
-    () => buildSections(data ?? [], filters),
-    [data, filters],
+    () => buildSections(data ?? [], filters, lang),
+    [data, filters, lang],
   );
 
   // The filter sheets commit a whole selection on "Apply"; the free chip stays

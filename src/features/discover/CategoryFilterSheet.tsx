@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { useT } from '@/lib/i18n';
 import { theme } from '@/lib/theme';
 import type { EventCategory } from '@/lib/types';
 import { BottomSheet, Button, Chip, Text } from '@/ui';
@@ -23,6 +24,7 @@ export function CategoryFilterSheet({
   onApply,
   onClose,
 }: CategoryFilterSheetProps) {
+  const t = useT();
   const [draft, setDraft] = useState<EventCategory[]>(selected);
 
   // Re-sync the draft to the applied selection whenever the sheet opens, so
@@ -45,23 +47,28 @@ export function CategoryFilterSheet({
     <BottomSheet
       visible={visible}
       onClose={onClose}
-      title="Filters"
+      title={t('common.filters')}
       footer={
         <View style={styles.footer}>
-          <Button label="Reset" type="secondary" style={styles.button} onPress={() => setDraft([])} />
-          <Button label="Apply" type="primary" style={styles.button} onPress={apply} />
+          <Button
+            label={t('common.reset')}
+            type="secondary"
+            style={styles.button}
+            onPress={() => setDraft([])}
+          />
+          <Button label={t('common.apply')} type="primary" style={styles.button} onPress={apply} />
         </View>
       }
     >
       <View style={styles.section}>
         <Text variant="caption" color={theme.colors.text.secondary} style={styles.label}>
-          Categories
+          {t('filters.categoriesSection')}
         </Text>
         <View style={styles.chips}>
           {CATEGORY_ORDER.map((category) => (
             <Chip
               key={category}
-              label={CATEGORY_META[category].label}
+              label={t(CATEGORY_META[category].labelKey)}
               leftIcon={CATEGORY_META[category].icon}
               active={draft.includes(category)}
               onPress={() => toggle(category)}

@@ -10,6 +10,7 @@ import Reanimated, {
 } from 'react-native-reanimated';
 
 import { dateChipLabel } from '@/lib/datetime';
+import { useT } from '@/lib/i18n';
 import { theme } from '@/lib/theme';
 import type { Event } from '@/lib/types';
 
@@ -34,6 +35,7 @@ export interface SavedRowProps {
 }
 
 export function SavedRow({ event, onPress, onDelete }: SavedRowProps) {
+  const t = useT();
   const renderRightActions = useCallback(
     (progress: SharedValue<number>) => (
       <DeleteAction progress={progress} label={event.title} onPress={onDelete} />
@@ -52,7 +54,7 @@ export function SavedRow({ event, onPress, onDelete }: SavedRowProps) {
       <EventRow
         title={event.title}
         venue={event.venue.name}
-        date={dateChipLabel(event.starts_at)}
+        date={dateChipLabel(event.starts_at, t.lang)}
         imageUrl={event.cover_url}
         onPress={onPress}
       />
@@ -72,6 +74,7 @@ function DeleteAction({
   label: string;
   onPress: () => void;
 }) {
+  const t = useT();
   const iconStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0, 1], [0, 1], Extrapolation.CLAMP),
     transform: [{ scale: interpolate(progress.value, [0, 1], [0.6, 1], Extrapolation.CLAMP) }],
@@ -82,7 +85,7 @@ function DeleteAction({
       style={styles.action}
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={`Remove ${label} from saved`}
+      accessibilityLabel={t('saved.removeA11y', { title: label })}
     >
       <Reanimated.View style={iconStyle}>
         <Trash size={TRASH_SIZE} color={theme.colors.text.primary} weight="bold" />

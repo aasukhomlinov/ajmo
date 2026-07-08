@@ -15,6 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { detailDateLabel, timeLabel } from '@/lib/datetime';
+import { useT } from '@/lib/i18n';
 import { useIsSaved, useSaves } from '@/lib/stores/saves';
 import { theme } from '@/lib/theme';
 import type { Event } from '@/lib/types';
@@ -43,6 +44,7 @@ export interface EventDetailScreenProps {
 export function EventDetailScreen({ event }: EventDetailScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const t = useT();
   // Save state comes from the shared store — toggling here is reflected in the
   // feed card and the Saved screen, and vice versa.
   const saved = useIsSaved(event.id);
@@ -61,8 +63,8 @@ export function EventDetailScreen({ event }: EventDetailScreenProps) {
     void Linking.openURL(event.source_url);
   }, [event.source_url]);
 
-  const dateLine = `${detailDateLabel(event.starts_at)} · ${timeLabel(event.starts_at, event.ends_at)}`;
-  const priceLine = event.is_free ? 'Free' : event.price_text;
+  const dateLine = `${detailDateLabel(event.starts_at, t.lang)} · ${timeLabel(event.starts_at, event.ends_at)}`;
+  const priceLine = event.is_free ? t('event.free') : event.price_text;
   const covers = event.covers ?? [event.cover_url];
 
   return (
@@ -110,14 +112,14 @@ export function EventDetailScreen({ event }: EventDetailScreenProps) {
               variant="surface"
               style={styles.overlayButton}
               onPress={() => router.back()}
-              accessibilityLabel="Go back"
+              accessibilityLabel={t('common.goBack')}
             />
             <IconButton
               icon={<ShareNetwork size={ACTION_ICON} color={theme.colors.text.primary} />}
               variant="surface"
               style={styles.overlayButton}
               onPress={onShare}
-              accessibilityLabel="Share event"
+              accessibilityLabel={t('event.shareA11y')}
             />
           </View>
 
@@ -133,7 +135,7 @@ export function EventDetailScreen({ event }: EventDetailScreenProps) {
         <View style={styles.body}>
           {/* Heading */}
           <View style={styles.heading}>
-            <Badge label={categoryLabel(event.category)} tone="neutral" />
+            <Badge label={categoryLabel(event.category, t)} tone="neutral" />
             <Text variant="h1">{event.title}</Text>
           </View>
 
@@ -165,7 +167,7 @@ export function EventDetailScreen({ event }: EventDetailScreenProps) {
           {/* About — plain description text */}
           <View style={styles.section}>
             <Text variant="caption" color={theme.colors.text.secondary} style={styles.sectionLabel}>
-              About
+              {t('event.about')}
             </Text>
             <Text variant="body">{event.description}</Text>
           </View>
@@ -173,7 +175,7 @@ export function EventDetailScreen({ event }: EventDetailScreenProps) {
           {/* Location */}
           <View style={styles.section}>
             <Text variant="caption" color={theme.colors.text.secondary} style={styles.sectionLabel}>
-              Location
+              {t('event.location')}
             </Text>
             <LocationPreview
               lat={event.venue.lat}
@@ -188,7 +190,7 @@ export function EventDetailScreen({ event }: EventDetailScreenProps) {
       {/* Action bar — single local Save (primary, wide) + Open-in-browser icon */}
       <View style={[styles.actionBar, { paddingBottom: insets.bottom + theme.spacing.sm }]}>
         <Button
-          label={saved ? 'Saved' : 'Save'}
+          label={saved ? t('event.saved') : t('event.save')}
           type={saved ? 'secondary' : 'primary'}
           leftIcon={saved ? Check : Plus}
           onPress={() => toggleSave(event.id)}
@@ -198,7 +200,7 @@ export function EventDetailScreen({ event }: EventDetailScreenProps) {
           icon={<ArrowUpRight size={ACTION_ICON} color={theme.colors.text.primary} />}
           variant="surface"
           onPress={onOpenBrowser}
-          accessibilityLabel="Open event page in browser"
+          accessibilityLabel={t('event.openBrowserA11y')}
         />
       </View>
     </Screen>

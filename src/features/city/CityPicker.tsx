@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
 import { CITIES } from '@/lib/cities';
+import { useT } from '@/lib/i18n';
 import { useActiveCity, useSetCity } from '@/lib/stores/city';
 import { theme } from '@/lib/theme';
 import type { CityId } from '@/lib/types';
@@ -16,9 +17,6 @@ import { Divider, Input, ListRow, Text } from '@/ui';
 // automatically" affordance — manual selection only (CLAUDE.md, no geolocation).
 // Matches frames 275:1451 (in-app) / 284:1496 (onboarding).
 
-const COPY_NOTE =
-  'Right now these are the only cities where ajmo works. New cities will be added soon!';
-
 const CHECK_SIZE = 20;
 
 export interface CityPickerProps {
@@ -29,14 +27,17 @@ export interface CityPickerProps {
 }
 
 export function CityPicker({ searchable = false, onSelect }: CityPickerProps) {
+  const t = useT();
   const activeCity = useActiveCity();
   const setCity = useSetCity();
   const [query, setQuery] = useState('');
 
+  // Filter over the LOCALIZED names so typing "бел"/"beo" works per language.
   const cities = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return q ? CITIES.filter((c) => c.name.toLowerCase().includes(q)) : CITIES;
-  }, [query]);
+    const localized = CITIES.map((c) => ({ id: c.id, name: t(c.nameKey) }));
+    return q ? localized.filter((c) => c.name.toLowerCase().includes(q)) : localized;
+  }, [query, t]);
 
   const handleSelect = (city: CityId) => {
     setCity(city);
@@ -49,14 +50,14 @@ export function CityPicker({ searchable = false, onSelect }: CityPickerProps) {
         <Input
           value={query}
           onChangeText={setQuery}
-          placeholder="Search cities"
+          placeholder={t('city.searchPlaceholder')}
           leftIcon={<MagnifyingGlass size={20} color={theme.colors.text.secondary} />}
         />
       ) : null}
 
       <View style={styles.section}>
         <Text variant="sectionHeader" color={theme.colors.text.secondary}>
-          Cities
+          {t('city.sectionTitle')}
         </Text>
         <View style={styles.card}>
           {cities.map((city, index) => (
@@ -78,7 +79,7 @@ export function CityPicker({ searchable = false, onSelect }: CityPickerProps) {
       </View>
 
       <Text variant="bodySmall" color={theme.colors.text.secondary}>
-        {COPY_NOTE}
+        {t('city.note')}
       </Text>
     </View>
   );

@@ -3,6 +3,7 @@ import { MapPin } from 'phosphor-react-native';
 import { Pressable, StyleSheet, View } from 'react-native';
 import Svg, { Line } from 'react-native-svg';
 
+import { useT } from '@/lib/i18n';
 import { theme } from '@/lib/theme';
 import { Text } from '@/ui/Text';
 
@@ -52,6 +53,7 @@ export interface LocationPreviewProps {
 }
 
 export function LocationPreview({ lat, lng, venueName, address }: LocationPreviewProps) {
+  const t = useT();
   const mapUrl = staticMapUrl(lat, lng);
 
   return (
@@ -59,7 +61,7 @@ export function LocationPreview({ lat, lng, venueName, address }: LocationPrevie
       style={styles.container}
       onPress={() => openInMaps({ lat, lng }, `${venueName}, ${address}`)}
       accessibilityRole="button"
-      accessibilityLabel={`Open ${venueName} in a maps app`}
+      accessibilityLabel={t('event.openMapsA11y', { venue: venueName })}
     >
       <View style={styles.map}>
         {mapUrl ? (

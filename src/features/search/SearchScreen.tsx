@@ -4,6 +4,7 @@ import { useCallback } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { dateChipLabel } from '@/lib/datetime';
+import { useT } from '@/lib/i18n';
 import { useActiveCity } from '@/lib/stores/city';
 import { theme } from '@/lib/theme';
 import type { Event } from '@/lib/types';
@@ -26,6 +27,7 @@ const SKELETON_COUNT = 3;
 
 export function SearchScreen() {
   const router = useRouter();
+  const t = useT();
   const activeCity = useActiveCity();
   const { query, setQuery, status, results, popular } = useSearch(activeCity);
   const { recent, addRecent } = useRecentSearches();
@@ -51,23 +53,23 @@ export function SearchScreen() {
         key={event.id}
         title={event.title}
         venue={event.venue.name}
-        date={dateChipLabel(event.starts_at)}
+        date={dateChipLabel(event.starts_at, t.lang)}
         imageUrl={event.cover_url}
         onPress={onPress}
       />
     ),
-    [],
+    [t.lang],
   );
 
   return (
     <Screen>
-      <Header title="Search" variant="compact" onBack={() => router.back()} />
+      <Header title={t('search.title')} variant="compact" onBack={() => router.back()} />
       <View style={styles.searchBar}>
         <Input
           type="text"
           value={query}
           onChangeText={setQuery}
-          placeholder="Search events, venues..."
+          placeholder={t('search.placeholder')}
           autoFocus
           returnKeyType="search"
           onSubmitEditing={() => addRecent(query)}
@@ -78,7 +80,7 @@ export function SearchScreen() {
                 onPress={() => setQuery('')}
                 hitSlop={8}
                 accessibilityRole="button"
-                accessibilityLabel="Clear search"
+                accessibilityLabel={t('search.clearA11y')}
               >
                 <XCircle size={ICON_SIZE} color={theme.colors.text.secondary} />
               </Pressable>
@@ -96,7 +98,7 @@ export function SearchScreen() {
           {recent.length > 0 ? (
             <View style={styles.section}>
               <Text variant="sectionHeader" color={theme.colors.text.secondary}>
-                Recent searches
+                {t('search.recent')}
               </Text>
               <View style={styles.chips}>
                 {recent.map((q) => (
@@ -109,7 +111,7 @@ export function SearchScreen() {
           {popular.length > 0 ? (
             <View style={styles.section}>
               <Text variant="sectionHeader" color={theme.colors.text.secondary}>
-                Popular this week
+                {t('search.popular')}
               </Text>
               <View style={styles.list}>
                 {popular.map((event) => renderRow(event, () => openEvent(event.id)))}
@@ -131,7 +133,7 @@ export function SearchScreen() {
           renderItem={({ item }) => renderRow(item, () => openResult(item.id))}
           ListHeaderComponent={
             <Text variant="sectionHeader" color={theme.colors.text.secondary} style={styles.count}>
-              {`${results.length} result${results.length === 1 ? '' : 's'}`}
+              {t.count('search.results', results.length)}
             </Text>
           }
           ItemSeparatorComponent={Separator}
@@ -143,9 +145,9 @@ export function SearchScreen() {
       ) : (
         <View style={styles.noResults}>
           <EmptyState
-            title="No results"
-            description={`Nothing matches “${query.trim()}”. Try a broader search or browse all events.`}
-            actionLabel="Browse all events"
+            title={t('search.noResultsTitle')}
+            description={t('search.noResultsDescription', { query: query.trim() })}
+            actionLabel={t('search.browseAll')}
             onAction={() => router.back()}
           />
         </View>

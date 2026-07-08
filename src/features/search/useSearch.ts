@@ -2,6 +2,7 @@ import { addDays, parseISO, startOfDay } from 'date-fns';
 import { useEffect, useMemo, useState } from 'react';
 
 import { useEvents } from '@/lib/api/events';
+import { useT, type Translator } from '@/lib/i18n';
 import type { CityId, Event } from '@/lib/types';
 
 import { categoryLabel } from '../discover/categories';
@@ -20,13 +21,15 @@ export type SearchStatus = 'empty' | 'typing' | 'results' | 'no-results';
 
 // Match on title / venue (name + address) / category — the fields a user is
 // likely to type. Case-insensitive substring; `needle` is already trimmed.
-function matchEvent(event: Event, needle: string): boolean {
+// Category matches BOTH the raw id ("music") and the localized label
+// ("Музыка"/"Muzika"), so English-ish queries keep working in ru/sr.
+function matchEvent(event: Event, needle: string, t: Translator): boolean {
   return (
     event.title.toLowerCase().includes(needle) ||
     event.venue.name.toLowerCase().includes(needle) ||
     event.venue.address.toLowerCase().includes(needle) ||
     event.category.includes(needle) ||
-    categoryLabel(event.category).toLowerCase().includes(needle)
+    categoryLabel(event.category, t).toLowerCase().includes(needle)
   );
 }
 
@@ -43,6 +46,7 @@ function popularThisWeek(events: Event[]): Event[] {
 }
 
 export function useSearch(city: CityId) {
+  const t = useT();
   // Upcoming events for the city, already sorted soonest-first by the query.
   const { data } = useEvents(city);
   const events = useMemo(() => data ?? [], [data]);
@@ -61,8 +65,8 @@ export function useSearch(city: CityId) {
   }, [trimmed]);
 
   const results = useMemo(
-    () => (settled ? events.filter((e) => matchEvent(e, settled)) : []),
-    [events, settled],
+    () => (settled ? events.filter((e) => matchEvent(e, settled, t)) : []),
+    [events, settled, t],
   );
 
   const popular = useMemo(() => popularThisWeek(events), [events]);

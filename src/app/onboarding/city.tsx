@@ -3,6 +3,7 @@ import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { CityPicker } from '@/features/city/CityPicker';
+import { useT } from '@/lib/i18n';
 import { theme } from '@/lib/theme';
 import { Button, Header, Screen, Text } from '@/ui';
 
@@ -15,6 +16,7 @@ import { Button, Header, Screen, Text } from '@/ui';
 export default function OnboardingCityScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const t = useT();
 
   return (
     <Screen>
@@ -22,14 +24,14 @@ export default function OnboardingCityScreen() {
 
       <View style={styles.body}>
         <Text variant="h1" style={styles.prompt}>
-          What&apos;s your location?
+          {t('city.onboardingPrompt')}
         </Text>
         <CityPicker />
       </View>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
         {/* Placeholder advance — the real onboarding/auth flow lands later. */}
-        <Button label="Continue" fullWidth onPress={() => router.replace('/discover')} />
+        <Button label={t('common.continue')} fullWidth onPress={() => router.replace('/discover')} />
       </View>
     </Screen>
   );

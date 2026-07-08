@@ -4,6 +4,7 @@ import { FlatList, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useSavedEvents } from '@/lib/api/events';
+import { useT } from '@/lib/i18n';
 import { useSaves, useSavedIds } from '@/lib/stores/saves';
 import { theme } from '@/lib/theme';
 import type { Event } from '@/lib/types';
@@ -27,6 +28,7 @@ const SKELETON_COUNT = 4;
 export function SavedScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const t = useT();
   const savedIds = useSavedIds();
   const toggleSave = useSaves((s) => s.toggleSave);
 
@@ -48,14 +50,14 @@ export function SavedScreen() {
 
   return (
     <Screen>
-      <Header title="Saved" />
+      <Header title={t('saved.title')} />
 
       {isError ? (
         <View style={styles.emptyWrap}>
           <EmptyState
-            title="Couldn’t load saved events"
-            description="Check your connection and try again."
-            actionLabel="Retry"
+            title={t('saved.errorTitle')}
+            description={t('common.connectionError')}
+            actionLabel={t('common.retry')}
             onAction={() => refetch()}
           />
         </View>
@@ -68,9 +70,9 @@ export function SavedScreen() {
       ) : savedEvents.length === 0 ? (
         <View style={styles.emptyWrap}>
           <EmptyState
-            title="No saved events yet"
-            description="Tap + on an event and it’ll show up here."
-            actionLabel="Discover events"
+            title={t('saved.emptyTitle')}
+            description={t('saved.emptyDescription')}
+            actionLabel={t('saved.discoverCta')}
             onAction={() => router.navigate('/discover')}
           />
         </View>

@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 
+import { useT } from '@/lib/i18n';
 import { theme } from '@/lib/theme';
 import { BottomSheet, Button, Radio, Text } from '@/ui';
 
-import { DATE_OPTION_LABELS, DATE_OPTION_ORDER, type DateFilter } from './useDiscoverFeed';
+import { DATE_OPTION_KEYS, DATE_OPTION_ORDER, type DateFilter } from './useDiscoverFeed';
 
 // Date filter sheet (frame node 178:724): a single-select "When" radio list of
 // presets with an Apply footer. "Any Time" is the built-in clear, so there is no
@@ -17,6 +18,7 @@ export interface DateFilterSheetProps {
 }
 
 export function DateFilterSheet({ visible, selected, onApply, onClose }: DateFilterSheetProps) {
+  const t = useT();
   const [draft, setDraft] = useState<DateFilter>(selected);
 
   // Re-sync the draft to the applied value whenever the sheet opens, so a
@@ -36,18 +38,18 @@ export function DateFilterSheet({ visible, selected, onApply, onClose }: DateFil
     <BottomSheet
       visible={visible}
       onClose={onClose}
-      title="Filters"
-      footer={<Button label="Apply" type="primary" fullWidth onPress={apply} />}
+      title={t('common.filters')}
+      footer={<Button label={t('common.apply')} type="primary" fullWidth onPress={apply} />}
     >
       <View style={styles.section}>
         <Text variant="caption" color={theme.colors.text.secondary} style={styles.label}>
-          When
+          {t('filters.when')}
         </Text>
         <View style={styles.options}>
           {DATE_OPTION_ORDER.map((option) => (
             <Radio
               key={option}
-              label={DATE_OPTION_LABELS[option]}
+              label={t(DATE_OPTION_KEYS[option])}
               checked={draft === option}
               onChange={() => setDraft(option)}
             />

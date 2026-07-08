@@ -5,6 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { cityHeaderLabel } from '@/lib/cities';
 import { dateChipLabel, timeLabel } from '@/lib/datetime';
+import { useT } from '@/lib/i18n';
 import { useActiveCity } from '@/lib/stores/city';
 import { useSaves, useSavedIds } from '@/lib/stores/saves';
 import { theme } from '@/lib/theme';
@@ -29,6 +30,7 @@ const SKELETON_COUNT = 5;
 export function DiscoverScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const t = useT();
 
   // City scope drives the feed query + the header pill; switching it in the
   // picker re-derives the sections (useDiscoverFeed memoizes on city).
@@ -60,8 +62,8 @@ export function DiscoverScreen() {
           venue={`${item.venue.name} · ${item.venue.address}`}
           time={timeLabel(item.starts_at, item.ends_at)}
           price={item.price_text}
-          dateLabel={dateChipLabel(item.starts_at)}
-          category={categoryLabel(item.category)}
+          dateLabel={dateChipLabel(item.starts_at, t.lang)}
+          category={categoryLabel(item.category, t)}
           imageUrl={item.cover_url}
           saved={savedIds.has(item.id)}
           onPress={() => router.push({ pathname: '/event/[id]', params: { id: item.id } })}
@@ -69,7 +71,7 @@ export function DiscoverScreen() {
         />
       </View>
     ),
-    [router, savedIds, toggleSave],
+    [router, savedIds, toggleSave, t],
   );
 
   const renderSectionHeader = useCallback(
@@ -82,7 +84,7 @@ export function DiscoverScreen() {
   return (
     <Screen>
       <DiscoverHeader
-        cityLabel={cityHeaderLabel(activeCity)}
+        cityLabel={cityHeaderLabel(activeCity, t)}
         onCityPress={() => router.push('/city')}
         onSearchPress={() => router.push('/search')}
       />
@@ -96,18 +98,18 @@ export function DiscoverScreen() {
       ) : isError ? (
         <View style={styles.emptyWrap}>
           <EmptyState
-            title="Couldn’t load events"
-            description="Check your connection and try again."
-            actionLabel="Retry"
+            title={t('discover.errorTitle')}
+            description={t('common.connectionError')}
+            actionLabel={t('common.retry')}
             onAction={() => refetch()}
           />
         </View>
       ) : sections.length === 0 ? (
         <View style={styles.emptyWrap}>
           <EmptyState
-            title="No events match"
-            description="Try clearing a filter or widening the dates — new events are added daily."
-            actionLabel="Clear filters"
+            title={t('discover.emptyTitle')}
+            description={t('discover.emptyDescription')}
+            actionLabel={t('discover.clearFilters')}
             onAction={clearFilters}
           />
         </View>

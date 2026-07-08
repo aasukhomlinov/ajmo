@@ -3,6 +3,7 @@ import { StyleSheet } from 'react-native';
 
 import { EventDetailScreen } from '@/features/event/EventDetailScreen';
 import { useEvent } from '@/lib/api/events';
+import { useT } from '@/lib/i18n';
 import { EmptyState, EventCardSkeleton, Screen } from '@/ui';
 
 // /event/[id] — opened from an EventCard in the feed (or a Saved row). Resolves
@@ -11,6 +12,7 @@ import { EmptyState, EventCardSkeleton, Screen } from '@/ui';
 // when the event is missing or the fetch fails.
 export default function EventRoute() {
   const router = useRouter();
+  const t = useT();
   const { id } = useLocalSearchParams<{ id: string }>();
   const { data: event, isLoading, isError } = useEvent(id);
 
@@ -26,13 +28,9 @@ export default function EventRoute() {
     return (
       <Screen padded contentContainerStyle={styles.notFound}>
         <EmptyState
-          title={isError ? 'Couldn’t load event' : 'Event not found'}
-          description={
-            isError
-              ? 'Check your connection and try again.'
-              : 'This event may have ended or been removed.'
-          }
-          actionLabel="Go back"
+          title={isError ? t('event.errorTitle') : t('event.notFoundTitle')}
+          description={isError ? t('common.connectionError') : t('event.notFoundDescription')}
+          actionLabel={t('common.goBack')}
           onAction={() => router.back()}
         />
       </Screen>
