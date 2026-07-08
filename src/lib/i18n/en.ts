@@ -1,0 +1,144 @@
+// English UI copy — the SOURCE OF TRUTH for interface strings. Every key added
+// here must be mirrored in ru.ts / sr.ts (they are typed as
+// Record<TranslationKey, string>, so a missing key is a tsc error, not a silent
+// fallback). Flat dot-keys; `{name}` placeholders are filled by t()'s vars.
+// Plural-sensitive strings come in `.one` / `.few` / `.many` triples consumed
+// via t.count() — en only distinguishes one/other, so few === many.
+//
+// UI chrome ONLY. Event content (titles/descriptions) is localized in the DB
+// (title_i18n/description_i18n) and resolved by the API layer — never here.
+export const en = {
+  // Shared actions / errors
+  'common.apply': 'Apply',
+  'common.reset': 'Reset',
+  'common.retry': 'Retry',
+  'common.goBack': 'Go back',
+  'common.continue': 'Continue',
+  'common.close': 'Close',
+  'common.dismiss': 'Dismiss',
+  'common.connectionError': 'Check your connection and try again.',
+  'common.filters': 'Filters',
+
+  // Tab bar (icon-only — these are accessibility labels)
+  'tabs.discover': 'Discover',
+  'tabs.saved': 'Saved',
+  'tabs.profile': 'Profile',
+
+  // Discover feed
+  'discover.errorTitle': 'Couldn’t load events',
+  'discover.emptyTitle': 'No events match',
+  'discover.emptyDescription':
+    'Try clearing a filter or widening the dates — new events are added daily.',
+  'discover.clearFilters': 'Clear filters',
+  'discover.searchA11y': 'Search events',
+  'discover.changeCityA11y': 'Change city — {city}',
+
+  // Filter bar + sheets
+  'filters.category': 'Category',
+  'filters.anyDate': 'Any date',
+  'filters.onlyFree': 'Only free',
+  'filters.categoriesCount.one': '{count} category',
+  'filters.categoriesCount.few': '{count} categories',
+  'filters.categoriesCount.many': '{count} categories',
+  'filters.categoriesSection': 'Categories',
+  'filters.when': 'When',
+
+  // Date presets (sheet radios + the date chip label)
+  'date.any': 'Any Time',
+  'date.today': 'Today',
+  'date.thisWeek': 'This Week',
+  'date.nextWeek': 'Next Week',
+  'date.thisMonth': 'This Month',
+  'date.nextMonth': 'Next Month',
+
+  // Event categories (filter chips + cover/detail badges)
+  'category.music': 'Music',
+  'category.party': 'Party',
+  'category.art': 'Art',
+  'category.food': 'Food',
+  'category.cinema': 'Cinema',
+  'category.theatre': 'Theatre',
+  'category.market': 'Market',
+  'category.other': 'Other',
+
+  // Search
+  'search.title': 'Search',
+  'search.placeholder': 'Search events, venues...',
+  'search.clearA11y': 'Clear search',
+  'search.recent': 'Recent searches',
+  'search.popular': 'Popular this week',
+  'search.results.one': '{count} result',
+  'search.results.few': '{count} results',
+  'search.results.many': '{count} results',
+  'search.noResultsTitle': 'No results',
+  'search.noResultsDescription':
+    'Nothing matches “{query}”. Try a broader search or browse all events.',
+  'search.browseAll': 'Browse all events',
+
+  // Event detail (+ card save control)
+  'event.about': 'About',
+  'event.location': 'Location',
+  'event.save': 'Save',
+  'event.saved': 'Saved',
+  'event.free': 'Free',
+  'event.saveA11y': 'Save event',
+  'event.savedA11y': 'Saved — tap to remove',
+  'event.shareA11y': 'Share event',
+  'event.openBrowserA11y': 'Open event page in browser',
+  'event.openMapsA11y': 'Open {venue} in a maps app',
+  'event.errorTitle': 'Couldn’t load event',
+  'event.notFoundTitle': 'Event not found',
+  'event.notFoundDescription': 'This event may have ended or been removed.',
+
+  // Saved
+  'saved.title': 'Saved',
+  'saved.errorTitle': 'Couldn’t load saved events',
+  'saved.emptyTitle': 'No saved events yet',
+  'saved.emptyDescription': 'Tap + on an event and it’ll show up here.',
+  'saved.discoverCta': 'Discover events',
+  'saved.removeA11y': 'Remove {title} from saved',
+
+  // City picker + onboarding step
+  'city.belgrade': 'Belgrade',
+  'city.noviSad': 'Novi Sad',
+  'city.chooseTitle': 'Choose your city',
+  'city.onboardingPrompt': 'What’s your location?',
+  'city.sectionTitle': 'Cities',
+  'city.searchPlaceholder': 'Search cities',
+  'city.note':
+    'Right now these are the only cities where ajmo works. New cities will be added soon!',
+
+  // Profile hub
+  'profile.title': 'Profile',
+  'profile.notifications': 'Notifications',
+  'profile.pushNotifications': 'Push notifications',
+  'profile.eventReminders': 'Event reminders',
+  'profile.language': 'Language',
+  'profile.aboutSection': 'About',
+  'profile.aboutAjmo': 'About ajmo',
+  'profile.privacy': 'Privacy Policy',
+  'profile.terms': 'Terms of Service',
+
+  // Language picker
+  'language.appLanguage': 'App language',
+
+  // Event reminders
+  'reminders.title': 'Event reminders',
+  'reminders.enable': 'Enable reminders',
+  'reminders.enableDescription':
+    'Get a notification to never miss an event you saved to your list',
+  'reminders.notifyMe': 'Notify me',
+  'reminders.oneWeek': 'One week before',
+  'reminders.twoDays': 'Two days before',
+  'reminders.oneDay': 'One day before',
+  'reminders.dayOf': 'On the day of the event',
+
+  // About
+  'about.title': 'About',
+  'about.tagline': 'Every event in your city, one place',
+  'about.version': 'Version {version}',
+  'about.credit': 'Made in Belgrade · © 2026 ajmo',
+} as const;
+
+/** Every valid UI-string key. Derived from the en dictionary (source of truth). */
+export type TranslationKey = keyof typeof en;

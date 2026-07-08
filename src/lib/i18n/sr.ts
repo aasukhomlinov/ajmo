@@ -1,0 +1,123 @@
+import type { TranslationKey } from './en';
+
+// Serbian UI copy — LATIN script (project convention). Tone: informal ti-form,
+// matching the colloquial brand voice ("ajmo"). Plural triples follow the
+// Serbian one/few/many rules (1 rezultat / 2 rezultata / 5 rezultata) — same
+// rule set as Russian, see pluralForm() in index.ts.
+export const sr: Record<TranslationKey, string> = {
+  'common.apply': 'Primeni',
+  'common.reset': 'Resetuj',
+  'common.retry': 'Pokušaj ponovo',
+  'common.goBack': 'Nazad',
+  'common.continue': 'Nastavi',
+  'common.close': 'Zatvori',
+  'common.dismiss': 'Zatvori',
+  'common.connectionError': 'Proveri vezu i pokušaj ponovo.',
+  'common.filters': 'Filteri',
+
+  'tabs.discover': 'Istraži',
+  'tabs.saved': 'Sačuvano',
+  'tabs.profile': 'Profil',
+
+  'discover.errorTitle': 'Učitavanje događaja nije uspelo',
+  'discover.emptyTitle': 'Nema takvih događaja',
+  'discover.emptyDescription':
+    'Probaj da skloniš filter ili proširiš datume — novi događaji stižu svakog dana.',
+  'discover.clearFilters': 'Obriši filtere',
+  'discover.searchA11y': 'Pretraži događaje',
+  'discover.changeCityA11y': 'Promeni grad — {city}',
+
+  'filters.category': 'Kategorija',
+  'filters.anyDate': 'Svi datumi',
+  'filters.onlyFree': 'Besplatno',
+  'filters.categoriesCount.one': '{count} kategorija',
+  'filters.categoriesCount.few': '{count} kategorije',
+  'filters.categoriesCount.many': '{count} kategorija',
+  'filters.categoriesSection': 'Kategorije',
+  'filters.when': 'Kada',
+
+  'date.any': 'Bilo kada',
+  'date.today': 'Danas',
+  'date.thisWeek': 'Ove nedelje',
+  'date.nextWeek': 'Sledeće nedelje',
+  'date.thisMonth': 'Ovog meseca',
+  'date.nextMonth': 'Sledećeg meseca',
+
+  'category.music': 'Muzika',
+  'category.party': 'Žurka',
+  'category.art': 'Umetnost',
+  'category.food': 'Hrana',
+  'category.cinema': 'Bioskop',
+  'category.theatre': 'Pozorište',
+  'category.market': 'Market',
+  'category.other': 'Ostalo',
+
+  'search.title': 'Pretraga',
+  'search.placeholder': 'Pretraži događaje, mesta...',
+  'search.clearA11y': 'Obriši pretragu',
+  'search.recent': 'Nedavne pretrage',
+  'search.popular': 'Popularno ove nedelje',
+  'search.results.one': '{count} rezultat',
+  'search.results.few': '{count} rezultata',
+  'search.results.many': '{count} rezultata',
+  'search.noResultsTitle': 'Nema rezultata',
+  'search.noResultsDescription':
+    'Ništa ne odgovara upitu „{query}”. Probaj drugačiju pretragu ili pogledaj sve događaje.',
+  'search.browseAll': 'Svi događaji',
+
+  'event.about': 'Opis',
+  'event.location': 'Lokacija',
+  'event.save': 'Sačuvaj',
+  'event.saved': 'Sačuvano',
+  'event.free': 'Besplatno',
+  'event.saveA11y': 'Sačuvaj događaj',
+  'event.savedA11y': 'Sačuvano — dodirni da ukloniš',
+  'event.shareA11y': 'Podeli događaj',
+  'event.openBrowserA11y': 'Otvori stranicu događaja u pregledaču',
+  'event.openMapsA11y': 'Otvori {venue} u mapama',
+  'event.errorTitle': 'Učitavanje događaja nije uspelo',
+  'event.notFoundTitle': 'Događaj nije pronađen',
+  'event.notFoundDescription': 'Možda se već završio ili je uklonjen.',
+
+  'saved.title': 'Sačuvano',
+  'saved.errorTitle': 'Učitavanje sačuvanog nije uspelo',
+  'saved.emptyTitle': 'Još nema sačuvanih događaja',
+  'saved.emptyDescription': 'Dodirni + na događaju i pojaviće se ovde.',
+  'saved.discoverCta': 'Istraži događaje',
+  'saved.removeA11y': 'Ukloni {title} iz sačuvanog',
+
+  'city.belgrade': 'Beograd',
+  'city.noviSad': 'Novi Sad',
+  'city.chooseTitle': 'Izaberi grad',
+  'city.onboardingPrompt': 'Gde se nalaziš?',
+  'city.sectionTitle': 'Gradovi',
+  'city.searchPlaceholder': 'Pretraži gradove',
+  'city.note': 'Za sada ajmo radi samo u ovim gradovima. Uskoro stižu novi!',
+
+  'profile.title': 'Profil',
+  'profile.notifications': 'Obaveštenja',
+  'profile.pushNotifications': 'Push obaveštenja',
+  'profile.eventReminders': 'Podsetnici za događaje',
+  'profile.language': 'Jezik',
+  'profile.aboutSection': 'O aplikaciji',
+  'profile.aboutAjmo': 'O aplikaciji ajmo',
+  'profile.privacy': 'Politika privatnosti',
+  'profile.terms': 'Uslovi korišćenja',
+
+  'language.appLanguage': 'Jezik aplikacije',
+
+  'reminders.title': 'Podsetnici',
+  'reminders.enable': 'Uključi podsetnike',
+  'reminders.enableDescription':
+    'Dobijaj obaveštenja da ne propustiš sačuvane događaje',
+  'reminders.notifyMe': 'Podseti me',
+  'reminders.oneWeek': 'Nedelju dana ranije',
+  'reminders.twoDays': 'Dva dana ranije',
+  'reminders.oneDay': 'Dan ranije',
+  'reminders.dayOf': 'Na dan događaja',
+
+  'about.title': 'O aplikaciji',
+  'about.tagline': 'Svi događaji u tvom gradu, na jednom mestu',
+  'about.version': 'Verzija {version}',
+  'about.credit': 'Napravljeno u Beogradu · © 2026 ajmo',
+};
