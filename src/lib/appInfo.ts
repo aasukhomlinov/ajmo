@@ -11,10 +11,11 @@ const build =
     ? String(Constants.expoConfig.android.versionCode)
     : '1');
 
-/** e.g. "v1.0.0 (1)" — Profile footer. */
+/** e.g. "v1.0.0 (1)" — Profile footer (no words, language-neutral). */
 export const APP_VERSION_LABEL = `v${version} (${build})`;
-/** e.g. "Version 1.0.0 (1)" — About screen. */
-export const APP_VERSION_LONG = `Version ${version} (${build})`;
+/** e.g. "1.0.0 (1)" — raw number for the About screen's localized
+ *  "Version {version}" line (t('about.version')). */
+export const APP_VERSION_NUMBER = `${version} (${build})`;
 
 // External legal links opened from the Profile hub via Linking.openURL.
 // TODO: point these at the real ajmo site once it exists (placeholders for now).

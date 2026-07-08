@@ -2,6 +2,7 @@ import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { APP_VERSION_LABEL } from '@/lib/appInfo';
+import { useT } from '@/lib/i18n';
 import { languageName, useLanguage, usePushEnabled, useSettings } from '@/lib/stores/settings';
 import { theme } from '@/lib/theme';
 import { Divider, Header, ListRow, Text, Toggle } from '@/ui';
@@ -27,51 +28,56 @@ export function ProfileScreen({
   onOpenPrivacy,
   onOpenTerms,
 }: ProfileScreenProps) {
+  const t = useT();
   const pushEnabled = usePushEnabled();
   const setPushEnabled = useSettings((s) => s.setPushEnabled);
   const language = useLanguage();
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <Header title="Profile" variant="large" />
+      <Header title={t('profile.title')} variant="large" />
 
       <ScrollView contentContainerStyle={styles.content}>
         {/* Notifications — master push switch + a route into per-event lead-times. */}
         <View style={styles.section}>
           <Text variant="sectionHeader" color={theme.colors.text.secondary}>
-            Notifications
+            {t('profile.notifications')}
           </Text>
           <View style={styles.card}>
             <ListRow
-              label="Push notifications"
+              label={t('profile.pushNotifications')}
               trailing={<Toggle value={pushEnabled} onValueChange={setPushEnabled} />}
             />
             <Divider />
-            <ListRow label="Event reminders" onPress={onOpenReminders} />
+            <ListRow label={t('profile.eventReminders')} onPress={onOpenReminders} />
           </View>
         </View>
 
         {/* Language — current choice shown as the subtitle; opens the picker. */}
         <View style={styles.section}>
           <Text variant="sectionHeader" color={theme.colors.text.secondary}>
-            Language
+            {t('profile.language')}
           </Text>
           <View style={styles.card}>
-            <ListRow label="Language" description={languageName(language)} onPress={onOpenLanguage} />
+            <ListRow
+              label={t('profile.language')}
+              description={languageName(language)}
+              onPress={onOpenLanguage}
+            />
           </View>
         </View>
 
         {/* About — in-app screen + external legal links. */}
         <View style={styles.section}>
           <Text variant="sectionHeader" color={theme.colors.text.secondary}>
-            About
+            {t('profile.aboutSection')}
           </Text>
           <View style={styles.card}>
-            <ListRow label="About ajmo" onPress={onOpenAbout} />
+            <ListRow label={t('profile.aboutAjmo')} onPress={onOpenAbout} />
             <Divider />
-            <ListRow label="Privacy Policy" onPress={onOpenPrivacy} />
+            <ListRow label={t('profile.privacy')} onPress={onOpenPrivacy} />
             <Divider />
-            <ListRow label="Terms of Service" onPress={onOpenTerms} />
+            <ListRow label={t('profile.terms')} onPress={onOpenTerms} />
           </View>
         </View>
 

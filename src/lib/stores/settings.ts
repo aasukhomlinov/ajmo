@@ -1,18 +1,22 @@
 import * as SecureStore from 'expo-secure-store';
 import { create } from 'zustand';
 
+// Type-only import from the en dictionary directly (NOT the i18n index, which
+// imports this store — the type is erased at runtime, so no cycle).
+import type { TranslationKey } from '@/lib/i18n/en';
+
 // App-preferences store — the SINGLE source of truth for the Profile branch
 // settings: app language, the master push/reminder switches, and the default
 // reminder lead-times. Mirrors the city/saves stores (zustand + expo-secure-store,
 // hydrated once in _layout) so the choices survive a relaunch.
 //
-// MVP scope: these are LOCAL preferences only. Picking a language writes the
-// store and marks the active language, but the UI copy stays English — actual
-// i18n translation is a later phase. The reminder lead-times + switches only
-// persist the user's intent; NO push registration or scheduling happens here —
-// that lands in Phase 6 (expo-notifications + the Supabase send-reminders
-// function). When auth + the per-user Supabase profile land, hydrate/persist
-// swap to that query and the call sites (selectors below) stay the same.
+// MVP scope: these are LOCAL preferences only. The active language drives BOTH
+// the UI chrome (src/lib/i18n) and the event-content localization (API layer).
+// The reminder lead-times + switches only persist the user's intent; NO push
+// registration or scheduling happens here — that lands in Phase 6
+// (expo-notifications + the Supabase send-reminders function). When auth + the
+// per-user Supabase profile land, hydrate/persist swap to that query and the
+// call sites (selectors below) stay the same.
 
 /** App-language preference. Native names shown in the picker; codes used here. */
 export type LanguageId = 'en' | 'sr' | 'ru';
@@ -42,15 +46,17 @@ export type ReminderOffset = '1_week' | '2_days' | '1_day' | 'day_of';
 
 export interface ReminderOption {
   value: ReminderOffset;
-  label: string;
+  /** i18n key for the row label — render via t(option.labelKey). */
+  labelKey: TranslationKey;
 }
 
-// Catalog order + copy match the Event reminders frame (239:1275).
+// Catalog order matches the Event reminders frame (239:1275); copy lives in
+// the i18n dictionaries.
 export const REMINDER_OPTIONS: readonly ReminderOption[] = [
-  { value: '1_week', label: 'One week before' },
-  { value: '2_days', label: 'Two days before' },
-  { value: '1_day', label: 'One day before' },
-  { value: 'day_of', label: 'On the day of the event' },
+  { value: '1_week', labelKey: 'reminders.oneWeek' },
+  { value: '2_days', labelKey: 'reminders.twoDays' },
+  { value: '1_day', labelKey: 'reminders.oneDay' },
+  { value: 'day_of', labelKey: 'reminders.dayOf' },
 ];
 
 const REMINDER_VALUES: readonly ReminderOffset[] = REMINDER_OPTIONS.map((o) => o.value);

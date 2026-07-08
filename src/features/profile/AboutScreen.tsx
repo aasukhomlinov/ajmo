@@ -1,7 +1,8 @@
 import { StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { APP_VERSION_LONG } from '@/lib/appInfo';
+import { APP_VERSION_NUMBER } from '@/lib/appInfo';
+import { useT } from '@/lib/i18n';
 import { theme } from '@/lib/theme';
 import { Divider, Header, Logo, Text } from '@/ui';
 
@@ -15,25 +16,26 @@ export interface AboutScreenProps {
 }
 
 export function AboutScreen({ onBack }: AboutScreenProps) {
+  const t = useT();
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <Header title="About" variant="compact" onBack={onBack} />
+      <Header title={t('about.title')} variant="compact" onBack={onBack} />
 
       <View style={styles.content}>
         <View style={styles.identity}>
           <Logo height={LOGO_HEIGHT} />
           <Text variant="body" color={theme.colors.text.secondary} style={styles.centered}>
-            Every event in your city, one place
+            {t('about.tagline')}
           </Text>
           <Text variant="bodySmall" color={theme.colors.text.secondary} style={styles.centered}>
-            {APP_VERSION_LONG}
+            {t('about.version', { version: APP_VERSION_NUMBER })}
           </Text>
         </View>
 
         <Divider />
 
         <Text variant="bodySmall" color={theme.colors.text.secondary} style={styles.centered}>
-          Made in Belgrade · © 2026 ajmo
+          {t('about.credit')}
         </Text>
       </View>
     </SafeAreaView>

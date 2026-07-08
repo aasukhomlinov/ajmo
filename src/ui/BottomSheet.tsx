@@ -11,6 +11,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { useT } from '@/lib/i18n';
 import { theme } from '@/lib/theme';
 
 import { IconButton } from './IconButton';
@@ -36,6 +37,7 @@ export interface BottomSheetProps {
 }
 
 export function BottomSheet({ visible, onClose, title, footer, children }: BottomSheetProps) {
+  const t = useT();
   const insets = useSafeAreaInsets();
   // `rendered` keeps the Modal mounted through the closing animation; it flips
   // off only once the slide-out finishes.
@@ -120,7 +122,7 @@ export function BottomSheet({ visible, onClose, title, footer, children }: Botto
             style={StyleSheet.absoluteFill}
             onPress={onClose}
             accessibilityRole="button"
-            accessibilityLabel="Dismiss"
+            accessibilityLabel={t('common.dismiss')}
           />
         </Animated.View>
         <Animated.View
@@ -148,7 +150,7 @@ export function BottomSheet({ visible, onClose, title, footer, children }: Botto
             <IconButton
               variant="ghost"
               onPress={onClose}
-              accessibilityLabel="Close"
+              accessibilityLabel={t('common.close')}
               icon={<X size={20} color={theme.colors.text.primary} />}
             />
           </View>

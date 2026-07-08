@@ -2,6 +2,7 @@ import { ArrowLeft } from 'phosphor-react-native';
 import type { ReactNode } from 'react';
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native';
 
+import { useT } from '@/lib/i18n';
 import { theme } from '@/lib/theme';
 
 import { IconButton } from './IconButton';
@@ -23,6 +24,7 @@ export interface HeaderProps {
 }
 
 export function Header({ title, variant = 'large', onBack, trailing, style }: HeaderProps) {
+  const t = useT();
   if (variant === 'compact') {
     return (
       <View style={[styles.base, styles.compact, style]}>
@@ -31,7 +33,7 @@ export function Header({ title, variant = 'large', onBack, trailing, style }: He
             icon={<ArrowLeft size={24} color={theme.colors.text.primary} />}
             variant="ghost"
             onPress={onBack}
-            accessibilityLabel="Go back"
+            accessibilityLabel={t('common.goBack')}
           />
         ) : (
           <View style={styles.spacer} />

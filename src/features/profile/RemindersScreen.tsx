@@ -2,6 +2,7 @@ import { Fragment } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { useT } from '@/lib/i18n';
 import {
   REMINDER_OPTIONS,
   useReminderOffsets,
@@ -21,6 +22,7 @@ export interface RemindersScreenProps {
 }
 
 export function RemindersScreen({ onBack }: RemindersScreenProps) {
+  const t = useT();
   const enabled = useRemindersEnabled();
   const setEnabled = useSettings((s) => s.setRemindersEnabled);
   const selected = useReminderOffsets();
@@ -28,14 +30,14 @@ export function RemindersScreen({ onBack }: RemindersScreenProps) {
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
-      <Header title="Event reminders" variant="compact" onBack={onBack} />
+      <Header title={t('reminders.title')} variant="compact" onBack={onBack} />
 
       <ScrollView contentContainerStyle={styles.content}>
         {/* Master switch — turns the whole feature on/off. */}
         <View style={styles.card}>
           <ListRow
-            label="Enable reminders"
-            description="Get a notification to never miss an event you saved to your list"
+            label={t('reminders.enable')}
+            description={t('reminders.enableDescription')}
             trailing={<Toggle value={enabled} onValueChange={setEnabled} />}
           />
         </View>
@@ -43,14 +45,14 @@ export function RemindersScreen({ onBack }: RemindersScreenProps) {
         {/* Lead-time options — disabled while reminders are off. */}
         <View style={styles.section}>
           <Text variant="sectionHeader" color={theme.colors.text.secondary}>
-            Notify me
+            {t('reminders.notifyMe')}
           </Text>
           <View style={styles.card}>
             {REMINDER_OPTIONS.map((option, index) => (
               <Fragment key={option.value}>
                 {index > 0 ? <Divider /> : null}
                 <Checkbox
-                  label={option.label}
+                  label={t(option.labelKey)}
                   checked={selected.includes(option.value)}
                   onChange={() => toggleOffset(option.value)}
                   disabled={!enabled}
