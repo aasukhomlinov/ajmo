@@ -12,7 +12,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.anonymous.ajmo",
       "infoPlist": {
-        "LSApplicationQueriesSchemes": ["maps", "comgooglemaps", "yandexmaps", "dgis"]
+        "LSApplicationQueriesSchemes": ["maps", "comgooglemaps", "yandexmaps", "dgis", "message"]
       }
     },
     "android": {

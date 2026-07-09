@@ -1,7 +1,7 @@
 import 'react-native-url-polyfill/auto';
 import { createClient } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
-import { Platform } from 'react-native';
+import { AppState, Platform } from 'react-native';
 
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
@@ -49,6 +49,24 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     autoRefreshToken: true,
     // Native app: there's no URL fragment to parse after OAuth redirects.
+    // Magic-link callbacks are handled explicitly (auth store completeFromUrl).
     detectSessionInUrl: false,
   },
 });
+
+// Supabase's auto-refresh timer can't see app visibility on native, so it must
+// be driven by AppState (per the Supabase RN guide): refresh while foregrounded,
+// pause in the background — otherwise a long-backgrounded app comes back with an
+// expired access token and the first queries fail.
+if (Platform.OS !== 'web') {
+  AppState.addEventListener('change', (state) => {
+    if (state === 'active') {
+      void supabase.auth.startAutoRefresh();
+    } else {
+      void supabase.auth.stopAutoRefresh();
+    }
+  });
+  if (AppState.currentState === 'active') {
+    void supabase.auth.startAutoRefresh();
+  }
+}
