@@ -23,6 +23,7 @@ import {
   Carousel,
   Checkbox,
   Chip,
+  CodeInput,
   Cover,
   Divider,
   EmptyState,
@@ -90,6 +91,7 @@ export function Gallery({ onBack }: GalleryProps) {
   const [notify, setNotify] = useState(true);
   const [rowToggle, setRowToggle] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [code, setCode] = useState('');
 
   return (
     <Screen scroll edges={['top']} contentContainerStyle={styles.content}>
@@ -199,6 +201,17 @@ export function Gallery({ onBack }: GalleryProps) {
         <Variant label="dropdown (empty / filled)">
           <Input type="dropdown" placeholder="Choose city" onPress={() => {}} />
           <Input type="dropdown" value="Beograd" onPress={() => {}} />
+        </Variant>
+      </Section>
+
+      <Section title="Inputs · CodeInput">
+        <Variant label="interactive (tap to type)">
+          <CodeInput value={code} onChange={setCode} />
+        </Variant>
+        <Variant label="partial / full / error">
+          <CodeInput value="42" onChange={() => {}} />
+          <CodeInput value="424242" onChange={() => {}} />
+          <CodeInput value="424242" onChange={() => {}} error />
         </Variant>
       </Section>
 

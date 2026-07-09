@@ -4,6 +4,7 @@ export { Button, type ButtonProps, type ButtonType } from './Button';
 export { Carousel, type CarouselProps } from './Carousel';
 export { Checkbox, type CheckboxProps } from './Checkbox';
 export { Chip, type ChipProps } from './Chip';
+export { CodeInput, type CodeInputProps } from './CodeInput';
 export { Cover, type CoverProps, type CoverRatio } from './Cover';
 export { Divider, type DividerProps } from './Divider';
 export { EmptyState, type EmptyStateProps } from './EmptyState';
