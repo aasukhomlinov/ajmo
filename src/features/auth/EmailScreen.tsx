@@ -8,15 +8,15 @@ import { useAuth } from '@/lib/stores/auth';
 import { theme } from '@/lib/theme';
 import { Button, IconButton, Input, Screen, Text } from '@/ui';
 
-// Auth · Email (frame 219:1298) — email entry for the magic link. Validates
+// Auth · Email (frame 219:1298) — email entry for the sign-in code. Validates
 // locally, calls signInWithOtp via the auth store, then advances to the
-// "check your inbox" confirmation.
+// code-entry screen.
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function EmailScreen() {
   const t = useT();
   const router = useRouter();
-  const sendMagicLink = useAuth((s) => s.sendMagicLink);
+  const sendCode = useAuth((s) => s.sendCode);
 
   const [email, setEmail] = useState('');
   const [sending, setSending] = useState(false);
@@ -30,7 +30,7 @@ export function EmailScreen() {
     }
     setError(null);
     setSending(true);
-    const sendError = await sendMagicLink(trimmed);
+    const sendError = await sendCode(trimmed);
     setSending(false);
     if (sendError) {
       setError('failed');
@@ -82,7 +82,7 @@ export function EmailScreen() {
         ) : null}
 
         <Button
-          label={t('auth.sendLink')}
+          label={t('auth.sendCode')}
           fullWidth
           disabled={sending}
           onPress={() => void submit()}

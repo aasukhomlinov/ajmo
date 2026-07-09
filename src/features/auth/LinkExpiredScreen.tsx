@@ -11,14 +11,15 @@ import { AuthConfirmation } from './AuthConfirmation';
 import { useTransientToast } from './useTransientToast';
 
 // Auth · Link expired (frame 274:1430) — shown when a magic-link callback
-// carries an error (consumed / expired / invalid link). "Send a new link"
-// resends to the address we still have; after a cold start it's gone (the
-// email lives only in memory), so both actions fall back to the email screen.
+// carries an error (consumed / expired / invalid link — the fallback path;
+// codes are primary). "Send a fresh code" resends to the address we still
+// have and lands on the code-entry screen; after a cold start the email is
+// gone (in-memory only), so both actions fall back to the email screen.
 export function LinkExpiredScreen() {
   const t = useT();
   const router = useRouter();
   const lastEmail = useAuth((s) => s.lastEmail);
-  const sendMagicLink = useAuth((s) => s.sendMagicLink);
+  const sendCode = useAuth((s) => s.sendCode);
   const { toast, showToast } = useTransientToast();
   const [sending, setSending] = useState(false);
 
@@ -28,7 +29,7 @@ export function LinkExpiredScreen() {
       return;
     }
     setSending(true);
-    const error = await sendMagicLink(lastEmail);
+    const error = await sendCode(lastEmail);
     setSending(false);
     if (error) {
       showToast(t('auth.sendFailed'), 'error');

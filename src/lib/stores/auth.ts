@@ -55,13 +55,15 @@ interface AuthState {
   session: Session | null;
   /** Post-sign-in onboarding (city → notifications) completed on this device. */
   onboarded: boolean;
-  /** Email the last magic link went to — for resend on Sent/Expired. In-memory only. */
+  /** Email the last sign-in code went to — for verify/resend. In-memory only. */
   lastEmail: string | null;
   /** Restore the persisted session once on app start + subscribe to auth changes. */
   hydrate: () => Promise<void>;
-  /** Request a magic link. Resolves to null on success or an error message. */
-  sendMagicLink: (email: string) => Promise<string | null>;
-  /** Establish the session from a magic-link callback deep link. */
+  /** Email a 6-digit sign-in code (+ magic-link fallback). Null on success or an error message. */
+  sendCode: (email: string) => Promise<string | null>;
+  /** Verify the emailed 6-digit code. Null on success or an error message. */
+  verifyCode: (email: string, token: string) => Promise<string | null>;
+  /** Establish the session from a magic-link callback deep link (fallback path). */
   completeFromUrl: (url: string) => Promise<AuthLinkResult>;
   /** Mark the post-sign-in onboarding flow finished, then persist. */
   completeOnboarding: () => void;
@@ -97,13 +99,26 @@ export const useAuth = create<AuthState>((set, get) => ({
     });
   },
 
-  sendMagicLink: async (email) => {
+  // The sign-in email carries a 6-digit code ({{ .Token }}) as the primary
+  // path — codes survive Gmail's link scanner, which burns one-shot magic
+  // links — plus the magic link itself as a fallback, hence emailRedirectTo.
+  sendCode: async (email) => {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: { emailRedirectTo: AUTH_REDIRECT_URL },
     });
     if (error) return error.message;
     set({ lastEmail: email });
+    return null;
+  },
+
+  verifyCode: async (email, token) => {
+    const { data, error } = await supabase.auth.verifyOtp({ email, token, type: 'email' });
+    if (error) return error.message;
+    if (!data.session) return 'No session returned';
+    // Set synchronously (onAuthStateChange fires async) so the root gate
+    // flips before the caller's next render — same reason as completeFromUrl.
+    set({ session: data.session, status: 'signedIn' });
     return null;
   },
 
