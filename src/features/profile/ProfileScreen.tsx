@@ -1,18 +1,20 @@
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { APP_VERSION_LABEL } from '@/lib/appInfo';
 import { useT } from '@/lib/i18n';
+import { useAuth, useUserEmail } from '@/lib/stores/auth';
 import { languageName, useLanguage, usePushEnabled, useSettings } from '@/lib/stores/settings';
 import { theme } from '@/lib/theme';
 import { Divider, Header, ListRow, Text, Toggle } from '@/ui';
 
 // Profile tab = the settings hub (frame 196:1111). A stack of grouped cards that
-// either toggle a local preference or navigate to a sub-screen. There is NO
-// account/auth block in v1 (auth is a later phase) — the frame draws none, so
-// neither does this. Push/reminder switches and the language preference are
-// stored locally only (see the settings store); the Privacy/Terms rows open
-// external links. Navigation to the sub-screens is injected by the route.
+// either toggle a local preference or navigate to a sub-screen. Push/reminder
+// switches and the language preference are stored locally only (see the settings
+// store); the Privacy/Terms rows open external links. Navigation to the
+// sub-screens is injected by the route. The Account section (auth phase) shows
+// the signed-in address + Sign out — ending the session flips the root gate
+// back to the auth flow, no navigation needed here.
 export interface ProfileScreenProps {
   onOpenLanguage?: () => void;
   onOpenReminders?: () => void;
@@ -32,12 +34,34 @@ export function ProfileScreen({
   const pushEnabled = usePushEnabled();
   const setPushEnabled = useSettings((s) => s.setPushEnabled);
   const language = useLanguage();
+  const email = useUserEmail();
+  const signOut = useAuth((s) => s.signOut);
+
+  // Signing back in costs a fresh magic-link round trip — confirm first.
+  const confirmSignOut = () => {
+    Alert.alert(t('profile.signOut'), t('profile.signOutConfirm'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      { text: t('profile.signOut'), style: 'destructive', onPress: () => void signOut() },
+    ]);
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Header title={t('profile.title')} variant="large" />
 
       <ScrollView contentContainerStyle={styles.content}>
+        {/* Account — signed-in address + sign out (the hard gate handles the rest). */}
+        <View style={styles.section}>
+          <Text variant="sectionHeader" color={theme.colors.text.secondary}>
+            {t('profile.account')}
+          </Text>
+          <View style={styles.card}>
+            {email ? <ListRow label={email} /> : null}
+            {email ? <Divider /> : null}
+            <ListRow label={t('profile.signOut')} onPress={confirmSignOut} showChevron={false} />
+          </View>
+        </View>
+
         {/* Notifications — master push switch + a route into per-event lead-times. */}
         <View style={styles.section}>
           <Text variant="sectionHeader" color={theme.colors.text.secondary}>
