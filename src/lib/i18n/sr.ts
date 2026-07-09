@@ -6,6 +6,7 @@ import type { TranslationKey } from './en';
 // rule set as Russian, see pluralForm() in index.ts.
 export const sr: Record<TranslationKey, string> = {
   'common.apply': 'Primeni',
+  'common.cancel': 'Otkaži',
   'common.reset': 'Resetuj',
   'common.retry': 'Pokušaj ponovo',
   'common.goBack': 'Nazad',
@@ -14,6 +15,39 @@ export const sr: Record<TranslationKey, string> = {
   'common.dismiss': 'Zatvori',
   'common.connectionError': 'Proveri vezu i pokušaj ponovo.',
   'common.filters': 'Filteri',
+
+  'auth.heroTitle': 'Svi događaji u tvom gradu, na jednom mestu',
+  'auth.heroSubtitle':
+    'Koncerti, žurke i izložbe — sa lokacija i društvenih mreža. Filtriraj po ukusu, sačuvaj šta ti se sviđa i dobij podsetnik pre početka.',
+  'auth.continueApple': 'Nastavi uz Apple',
+  'auth.continueGoogle': 'Nastavi uz Google',
+  'auth.continueEmail': 'Nastavi uz imejl',
+  'auth.legal': 'Nastavljanjem prihvataš {terms} i {privacy}.',
+  'auth.legalTerms': 'Uslove korišćenja',
+  'auth.legalPrivacy': 'Politiku privatnosti',
+  'auth.emailTitle': 'Koji je tvoj imejl?',
+  'auth.emailSubtitle': 'Poslaćemo ti magični link — bez lozinke.',
+  'auth.emailPlaceholder': 'ti@email.com',
+  'auth.sendLink': 'Pošalji link',
+  'auth.emailInvalid': 'Ovo ne liči na imejl — proveri i probaj ponovo.',
+  'auth.sendFailed': 'Slanje nije uspelo. Probaj ponovo za minut.',
+  'auth.sentTitle': 'Proveri sanduče',
+  'auth.sentBody': 'Poslali smo magični link na {email} — otvori ga da završiš prijavu.',
+  'auth.openEmailApp': 'Otvori imejl',
+  'auth.resend': 'Pošalji ponovo',
+  'auth.resent': 'Novi link je na putu.',
+  'auth.expiredTitle': 'Link je istekao',
+  'auth.expiredBody':
+    'Magični linkovi rade samo jednom i brzo ističu. Pošalji novi i upadaš.',
+  'auth.sendNew': 'Pošalji novi link',
+  'auth.useDifferentEmail': 'Koristi drugi imejl',
+  'auth.signingIn': 'Prijavljujemo te…',
+
+  'onboarding.notificationsTitle': 'Ne propusti nijedan događaj',
+  'onboarding.notificationsBody':
+    'Uključi obaveštenja i podsetićemo te pre događaja na koje ideš. Bez spama — samo ono što si tražio.',
+  'onboarding.notificationsCta': 'Uključi obaveštenja',
+  'onboarding.notificationsSkip': 'Ne sada',
 
   'tabs.discover': 'Istraži',
   'tabs.saved': 'Sačuvano',
@@ -95,6 +129,9 @@ export const sr: Record<TranslationKey, string> = {
   'city.note': 'Za sada ajmo radi samo u ovim gradovima. Uskoro stižu novi!',
 
   'profile.title': 'Profil',
+  'profile.account': 'Nalog',
+  'profile.signOut': 'Odjavi se',
+  'profile.signOutConfirm': 'Za ponovnu prijavu trebaće ti novi magični link.',
   'profile.notifications': 'Obaveštenja',
   'profile.pushNotifications': 'Push obaveštenja',
   'profile.eventReminders': 'Podsetnici za događaje',

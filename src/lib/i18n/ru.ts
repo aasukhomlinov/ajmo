@@ -7,6 +7,7 @@ import type { TranslationKey } from './en';
 // (1 результат / 2 результата / 5 результатов) — see pluralForm() in index.ts.
 export const ru: Record<TranslationKey, string> = {
   'common.apply': 'Применить',
+  'common.cancel': 'Отмена',
   'common.reset': 'Сбросить',
   'common.retry': 'Повторить',
   'common.goBack': 'Назад',
@@ -15,6 +16,39 @@ export const ru: Record<TranslationKey, string> = {
   'common.dismiss': 'Закрыть',
   'common.connectionError': 'Проверь соединение и попробуй ещё раз.',
   'common.filters': 'Фильтры',
+
+  'auth.heroTitle': 'Все события города — в одном месте',
+  'auth.heroSubtitle':
+    'Концерты, вечеринки и выставки — с площадок и из соцсетей. Фильтруй по вкусу, сохраняй понравившееся и получай напоминание перед началом.',
+  'auth.continueApple': 'Продолжить с Apple',
+  'auth.continueGoogle': 'Продолжить с Google',
+  'auth.continueEmail': 'Продолжить с почтой',
+  'auth.legal': 'Продолжая, ты соглашаешься с {terms} и {privacy}.',
+  'auth.legalTerms': 'Условиями',
+  'auth.legalPrivacy': 'Политикой конфиденциальности',
+  'auth.emailTitle': 'Какая у тебя почта?',
+  'auth.emailSubtitle': 'Пришлём волшебную ссылку — без пароля.',
+  'auth.emailPlaceholder': 'you@email.com',
+  'auth.sendLink': 'Отправить ссылку',
+  'auth.emailInvalid': 'Это не похоже на почту — проверь и попробуй ещё раз.',
+  'auth.sendFailed': 'Не получилось отправить ссылку. Попробуй через минуту.',
+  'auth.sentTitle': 'Проверь почту',
+  'auth.sentBody': 'Мы отправили ссылку на {email} — открой её, чтобы войти.',
+  'auth.openEmailApp': 'Открыть почту',
+  'auth.resend': 'Отправить ещё раз',
+  'auth.resent': 'Новая ссылка уже летит.',
+  'auth.expiredTitle': 'Ссылка устарела',
+  'auth.expiredBody':
+    'Волшебные ссылки работают один раз и быстро устаревают. Отправь новую — и ты в деле.',
+  'auth.sendNew': 'Отправить новую',
+  'auth.useDifferentEmail': 'Указать другую почту',
+  'auth.signingIn': 'Входим…',
+
+  'onboarding.notificationsTitle': 'Не пропускай события',
+  'onboarding.notificationsBody':
+    'Включи уведомления — напомним перед событиями, которые ты сохранил. Без спама: только то, о чём ты просил.',
+  'onboarding.notificationsCta': 'Включить уведомления',
+  'onboarding.notificationsSkip': 'Не сейчас',
 
   'tabs.discover': 'Афиша',
   'tabs.saved': 'Сохранённое',
@@ -96,6 +130,9 @@ export const ru: Record<TranslationKey, string> = {
   'city.note': 'Пока ajmo работает только в этих городах. Скоро добавим новые!',
 
   'profile.title': 'Профиль',
+  'profile.account': 'Аккаунт',
+  'profile.signOut': 'Выйти',
+  'profile.signOutConfirm': 'Чтобы войти снова, понадобится новая волшебная ссылка.',
   'profile.notifications': 'Уведомления',
   'profile.pushNotifications': 'Push-уведомления',
   'profile.eventReminders': 'Напоминания о событиях',

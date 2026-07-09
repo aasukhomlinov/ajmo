@@ -7,12 +7,12 @@ import { useT } from '@/lib/i18n';
 import { theme } from '@/lib/theme';
 import { Button, Header, Screen, Text } from '@/ui';
 
-// Onboarding "What's your location?" step (frame 284:1496) — shown once after
-// sign-in. Reuses the shared CityPicker; the chrome differs from the in-app
-// /city route: an H1 prompt (no centered header title) and a Continue CTA that
-// advances the flow. Selecting a city writes the store immediately (the check
-// moves); Continue advances. The full onboarding/auth flow is wired in a later
-// phase — Continue's navigation is a placeholder for now.
+// Onboarding "What's your location?" step (frame 284:1496) — step 1 after the
+// first sign-in (the gate anchors here while onboarding is unfinished). Reuses
+// the shared CityPicker; the chrome differs from the in-app /city route: an H1
+// prompt (no centered header title) and a Continue CTA that advances to the
+// notifications-permission step. Selecting a city writes the local store
+// immediately (Auth-2 moves it to the profile).
 export default function OnboardingCityScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
@@ -20,7 +20,12 @@ export default function OnboardingCityScreen() {
 
   return (
     <Screen>
-      <Header variant="compact" title="" onBack={() => router.back()} />
+      {/* As the flow anchor there is usually no history — hide back then. */}
+      <Header
+        variant="compact"
+        title=""
+        onBack={router.canGoBack() ? () => router.back() : undefined}
+      />
 
       <View style={styles.body}>
         <Text variant="h1" style={styles.prompt}>
@@ -30,8 +35,11 @@ export default function OnboardingCityScreen() {
       </View>
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + theme.spacing.lg }]}>
-        {/* Placeholder advance — the real onboarding/auth flow lands later. */}
-        <Button label={t('common.continue')} fullWidth onPress={() => router.replace('/discover')} />
+        <Button
+          label={t('common.continue')}
+          fullWidth
+          onPress={() => router.push('/onboarding/notifications')}
+        />
       </View>
     </Screen>
   );

@@ -10,6 +10,7 @@
 export const en = {
   // Shared actions / errors
   'common.apply': 'Apply',
+  'common.cancel': 'Cancel',
   'common.reset': 'Reset',
   'common.retry': 'Retry',
   'common.goBack': 'Go back',
@@ -18,6 +19,41 @@ export const en = {
   'common.dismiss': 'Dismiss',
   'common.connectionError': 'Check your connection and try again.',
   'common.filters': 'Filters',
+
+  // Auth flow (welcome / email / sent / expired / callback)
+  'auth.heroTitle': 'Every event in your city, one place',
+  'auth.heroSubtitle':
+    'Concerts, parties and art — pulled from venues and social networks. Filter to your taste, save what you like, and get a reminder before it starts.',
+  'auth.continueApple': 'Continue with Apple',
+  'auth.continueGoogle': 'Continue with Google',
+  'auth.continueEmail': 'Continue with email',
+  'auth.legal': 'By continuing you agree to {terms} & {privacy}.',
+  'auth.legalTerms': 'Terms',
+  'auth.legalPrivacy': 'Privacy',
+  'auth.emailTitle': 'What’s your email?',
+  'auth.emailSubtitle': 'We’ll send you a magic link — no password.',
+  'auth.emailPlaceholder': 'you@email.com',
+  'auth.sendLink': 'Send link',
+  'auth.emailInvalid': 'That doesn’t look like an email — check it and try again.',
+  'auth.sendFailed': 'Couldn’t send the link. Try again in a minute.',
+  'auth.sentTitle': 'Check your inbox',
+  'auth.sentBody': 'We sent a magic link to {email} — open it to finish signing in.',
+  'auth.openEmailApp': 'Open email app',
+  'auth.resend': 'Resend email',
+  'auth.resent': 'A fresh link is on its way.',
+  'auth.expiredTitle': 'This link expired',
+  'auth.expiredBody':
+    'Magic links work once and expire after a while. Send a fresh one and you’re in.',
+  'auth.sendNew': 'Send a new link',
+  'auth.useDifferentEmail': 'Use a different email',
+  'auth.signingIn': 'Signing you in…',
+
+  // Onboarding · notifications permission
+  'onboarding.notificationsTitle': 'Never miss an event',
+  'onboarding.notificationsBody':
+    'Turn on notifications and we’ll remind you before events you’re going to. No spam — only what you asked for.',
+  'onboarding.notificationsCta': 'Turn on notifications',
+  'onboarding.notificationsSkip': 'Not now',
 
   // Tab bar (icon-only — these are accessibility labels)
   'tabs.discover': 'Discover',
@@ -110,6 +146,9 @@ export const en = {
 
   // Profile hub
   'profile.title': 'Profile',
+  'profile.account': 'Account',
+  'profile.signOut': 'Sign out',
+  'profile.signOutConfirm': 'You’ll need a new magic link to sign back in.',
   'profile.notifications': 'Notifications',
   'profile.pushNotifications': 'Push notifications',
   'profile.eventReminders': 'Event reminders',

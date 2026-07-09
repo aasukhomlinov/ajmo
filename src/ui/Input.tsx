@@ -37,6 +37,14 @@ export interface InputProps {
   onSubmitEditing?: () => void;
   /** Text only — return key label/affordance (e.g. "search"). */
   returnKeyType?: TextInputProps['returnKeyType'];
+  /** Text only — keyboard layout (e.g. "email-address" on the auth screen). */
+  keyboardType?: TextInputProps['keyboardType'];
+  /** Text only — auto-capitalization (default RN behavior when omitted). */
+  autoCapitalize?: TextInputProps['autoCapitalize'];
+  /** Text only — disable autocorrect for identifier-like fields (emails). */
+  autoCorrect?: boolean;
+  /** Text only — autofill hint (e.g. "email"). */
+  autoComplete?: TextInputProps['autoComplete'];
   style?: StyleProp<ViewStyle>;
 }
 
@@ -53,6 +61,10 @@ export function Input({
   autoFocus = false,
   onSubmitEditing,
   returnKeyType,
+  keyboardType,
+  autoCapitalize,
+  autoCorrect,
+  autoComplete,
   style,
 }: InputProps) {
   const [focused, setFocused] = useState(false);
@@ -105,6 +117,10 @@ export function Input({
         editable={!disabled}
         autoFocus={autoFocus}
         returnKeyType={returnKeyType}
+        keyboardType={keyboardType}
+        autoCapitalize={autoCapitalize}
+        autoCorrect={autoCorrect}
+        autoComplete={autoComplete}
         onSubmitEditing={onSubmitEditing}
         selectionColor={theme.colors.accent.base}
         onFocus={() => setFocused(true)}

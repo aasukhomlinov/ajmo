@@ -29,6 +29,10 @@ export const theme = {
       "activePill": "#FFFFFF24",
       "fillLight": "#FFFFFFB3",
       "activePillLight": "#0D0E111F"
+    },
+    "constant": {
+      "white": "#FFFFFF",
+      "black": "#000000"
     }
   },
   "spacing": {
