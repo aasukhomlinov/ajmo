@@ -137,6 +137,7 @@ export const ru: Record<TranslationKey, string> = {
   'profile.signOutConfirm': 'Чтобы войти снова, понадобится новая волшебная ссылка.',
   'profile.notifications': 'Уведомления',
   'profile.pushNotifications': 'Push-уведомления',
+  'profile.pushSystemOff': 'Выключены в настройках системы — нажми, чтобы открыть',
   'profile.eventReminders': 'Напоминания о событиях',
   'profile.language': 'Язык',
   'profile.aboutSection': 'О приложении',

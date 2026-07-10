@@ -1,9 +1,9 @@
-import * as Notifications from 'expo-notifications';
 import { useRouter } from 'expo-router';
 import { Bell } from 'phosphor-react-native';
 import { useState } from 'react';
 
 import { useT } from '@/lib/i18n';
+import { ensureNotificationsPermission } from '@/lib/notifications/permissions';
 import { useAuth } from '@/lib/stores/auth';
 import { useSettings } from '@/lib/stores/settings';
 import { theme } from '@/lib/theme';
@@ -14,7 +14,7 @@ import { AuthConfirmation } from './AuthConfirmation';
 // the city picker. "Turn on" raises the OS permission prompt; either choice
 // finishes onboarding (completeOnboarding flips the root gate, which redirects
 // into the tabs). The push preference persists to the user's profile via the
-// settings mirror; actual token registration/scheduling is a later phase.
+// settings mirror; useReminderSync picks the grant up and schedules from there.
 export function NotificationsPermissionScreen() {
   const t = useT();
   const router = useRouter();
@@ -30,8 +30,9 @@ export function NotificationsPermissionScreen() {
   const enable = async () => {
     setRequesting(true);
     try {
-      const { status } = await Notifications.requestPermissionsAsync();
-      setPushEnabled(status === 'granted');
+      // Shared helper so the OS grant lands in the permissions store too (the
+      // reminder sync + the Profile status line read it).
+      setPushEnabled(await ensureNotificationsPermission());
     } catch {
       setPushEnabled(false);
     }

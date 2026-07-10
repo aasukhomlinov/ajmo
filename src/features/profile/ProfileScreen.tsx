@@ -1,8 +1,12 @@
-import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { Alert, Linking, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { APP_VERSION_LABEL } from '@/lib/appInfo';
 import { useT } from '@/lib/i18n';
+import {
+  ensureNotificationsPermission,
+  useNotificationsGranted,
+} from '@/lib/notifications/permissions';
 import { useAuth, useUserEmail } from '@/lib/stores/auth';
 import { languageName, useLanguage, usePushEnabled, useSettings } from '@/lib/stores/settings';
 import { theme } from '@/lib/theme';
@@ -36,6 +40,18 @@ export function ProfileScreen({
   const language = useLanguage();
   const email = useUserEmail();
   const signOut = useAuth((s) => s.signOut);
+  const granted = useNotificationsGranted();
+
+  // Preference ON but the OS says no → surface it passively (no nagging): a
+  // status line under the switch; tapping the row opens system settings.
+  const systemBlocked = pushEnabled && granted === false;
+
+  const togglePush = (enabled: boolean) => {
+    setPushEnabled(enabled);
+    // "Ask later" users get the OS prompt on re-enable; a hard denial is not
+    // re-promptable — the status line + settings link covers that path.
+    if (enabled) void ensureNotificationsPermission();
+  };
 
   // Signing back in costs a fresh magic-link round trip — confirm first.
   const confirmSignOut = () => {
@@ -70,7 +86,10 @@ export function ProfileScreen({
           <View style={styles.card}>
             <ListRow
               label={t('profile.pushNotifications')}
-              trailing={<Toggle value={pushEnabled} onValueChange={setPushEnabled} />}
+              description={systemBlocked ? t('profile.pushSystemOff') : undefined}
+              onPress={systemBlocked ? () => void Linking.openSettings() : undefined}
+              showChevron={false}
+              trailing={<Toggle value={pushEnabled} onValueChange={togglePush} />}
             />
             <Divider />
             <ListRow label={t('profile.eventReminders')} onPress={onOpenReminders} />

@@ -136,6 +136,7 @@ export const sr: Record<TranslationKey, string> = {
   'profile.signOutConfirm': 'Za ponovnu prijavu trebaće ti novi magični link.',
   'profile.notifications': 'Obaveštenja',
   'profile.pushNotifications': 'Push obaveštenja',
+  'profile.pushSystemOff': 'Isključena u podešavanjima sistema — dodirni da ih otvoriš',
   'profile.eventReminders': 'Podsetnici za događaje',
   'profile.language': 'Jezik',
   'profile.aboutSection': 'O aplikaciji',

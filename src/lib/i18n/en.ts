@@ -153,6 +153,7 @@ export const en = {
   'profile.signOutConfirm': 'You’ll need a new magic link to sign back in.',
   'profile.notifications': 'Notifications',
   'profile.pushNotifications': 'Push notifications',
+  'profile.pushSystemOff': 'Off in system settings — tap to open settings',
   'profile.eventReminders': 'Event reminders',
   'profile.language': 'Language',
   'profile.aboutSection': 'About',
