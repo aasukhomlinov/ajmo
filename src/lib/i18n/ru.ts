@@ -157,6 +157,12 @@ export const ru: Record<TranslationKey, string> = {
   'reminders.oneDay': 'За день',
   'reminders.dayOf': 'В день события',
 
+  'notifications.oneWeekTitle': 'Через неделю: {title}',
+  'notifications.twoDaysTitle': 'Через два дня: {title}',
+  'notifications.oneDayTitle': 'Завтра: {title}',
+  'notifications.dayOfTitle': 'Сегодня: {title}',
+  'notifications.body': '{venue} · {time}',
+
   'about.title': 'О приложении',
   'about.tagline': 'Все события города — в одном месте',
   'about.version': 'Версия {version}',

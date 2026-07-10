@@ -8,11 +8,14 @@ import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
 import { useProfileBootstrap } from '@/features/auth/useProfileBootstrap';
+import { initNotifications, useNotificationDeepLink } from '@/lib/notifications/setup';
+import { useReminderSync } from '@/lib/notifications/useReminderSync';
 import { queryClient } from '@/lib/queryClient';
 import { useAuth, useAuthStatus, useOnboarded } from '@/lib/stores/auth';
 import { theme } from '@/lib/theme';
 
 SplashScreen.preventAutoHideAsync();
+initNotifications();
 
 export default function RootLayout() {
   // Static cuts instanced from the variable master (scripts/build-fonts.py).
@@ -60,6 +63,13 @@ function RootNavigator({ fontsReady }: RootNavigatorProps) {
   // before the gate renders — the app comes up with the USER'S city/language/
   // prefs, not defaults (no flash of empty state).
   const profileReady = useProfileBootstrap();
+
+  // Local event reminders (Phase 6): keep the OS notification set in sync with
+  // saves + prefs while the gate is open, and route notification taps to the
+  // event detail once the tabs are mountable.
+  const gateOpen = authStatus === 'signedIn' && onboarded;
+  useReminderSync(gateOpen && profileReady);
+  useNotificationDeepLink(gateOpen && profileReady && fontsReady);
 
   // Hold the native splash until fonts, the persisted session AND the profile
   // mirrors are in: rendering the navigator earlier would flash the auth flow

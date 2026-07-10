@@ -156,6 +156,12 @@ export const sr: Record<TranslationKey, string> = {
   'reminders.oneDay': 'Dan ranije',
   'reminders.dayOf': 'Na dan događaja',
 
+  'notifications.oneWeekTitle': 'Za nedelju dana: {title}',
+  'notifications.twoDaysTitle': 'Za dva dana: {title}',
+  'notifications.oneDayTitle': 'Sutra: {title}',
+  'notifications.dayOfTitle': 'Danas: {title}',
+  'notifications.body': '{venue} · {time}',
+
   'about.title': 'O aplikaciji',
   'about.tagline': 'Svi događaji u tvom gradu, na jednom mestu',
   'about.version': 'Verzija {version}',

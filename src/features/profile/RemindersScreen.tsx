@@ -13,10 +13,10 @@ import { theme } from '@/lib/theme';
 import { Checkbox, Divider, Header, ListRow, Text, Toggle } from '@/ui';
 
 // Event reminders (frame 239:1275). A master "Enable reminders" switch plus the
-// multi-select default lead-times. Both persist to the settings store as the
-// user's PREFERENCE only — there is NO push scheduling here. The actual
-// per-event scheduling (expo-notifications) + the Supabase send-reminders wiring
-// land in Phase 6; this screen just records what the user wants.
+// multi-select default lead-times. Both persist to the settings store; the
+// screen does no scheduling itself — useReminderSync (mounted at the root)
+// watches these values and reconciles the scheduled OS notifications for every
+// saved event whenever they change.
 export interface RemindersScreenProps {
   onBack?: () => void;
 }

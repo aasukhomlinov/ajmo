@@ -2,6 +2,7 @@ import type { Session } from '@supabase/supabase-js';
 import { create } from 'zustand';
 
 import { updateProfile } from '@/lib/api/profile';
+import { cancelAllReminders } from '@/lib/notifications/reminders';
 import { queryClient } from '@/lib/queryClient';
 import { useCity } from '@/lib/stores/city';
 import { useSettings } from '@/lib/stores/settings';
@@ -186,6 +187,9 @@ function clearUserScopedState(): void {
   useSettings.getState().reset();
   useCity.getState().reset();
   useAuth.setState({ onboarded: false });
+  // Scheduled reminders are device-local but user-scoped — drop them so the
+  // next account doesn't get the previous user's event notifications.
+  void cancelAllReminders();
 }
 
 /** Reactive: the gate status (restoring / signedIn / signedOut). */

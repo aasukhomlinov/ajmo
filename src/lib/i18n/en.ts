@@ -175,6 +175,13 @@ export const en = {
   'reminders.oneDay': 'One day before',
   'reminders.dayOf': 'On the day of the event',
 
+  // Reminder notifications — {title}/{venue}/{time} baked in at scheduling time
+  'notifications.oneWeekTitle': 'In one week: {title}',
+  'notifications.twoDaysTitle': 'In two days: {title}',
+  'notifications.oneDayTitle': 'Tomorrow: {title}',
+  'notifications.dayOfTitle': 'Today: {title}',
+  'notifications.body': '{venue} · {time}',
+
   // About
   'about.title': 'About',
   'about.tagline': 'Every event in your city, one place',
