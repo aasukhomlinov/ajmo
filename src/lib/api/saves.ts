@@ -28,7 +28,7 @@ function useUserId(): string | undefined {
 }
 
 /** Saved event ids, most recent first. RLS scopes rows; the eq is belt-and-braces. */
-async function fetchSavedIds(userId: string): Promise<string[]> {
+export async function fetchSavedIds(userId: string): Promise<string[]> {
   const { data, error } = await supabase
     .from('saves')
     .select('event_id')

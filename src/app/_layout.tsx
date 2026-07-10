@@ -7,10 +7,9 @@ import { useEffect } from 'react';
 import { StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 
+import { useProfileBootstrap } from '@/features/auth/useProfileBootstrap';
 import { queryClient } from '@/lib/queryClient';
-import { useAuth } from '@/lib/stores/auth';
-import { useCity } from '@/lib/stores/city';
-import { useSettings } from '@/lib/stores/settings';
+import { useAuth, useAuthStatus, useOnboarded } from '@/lib/stores/auth';
 import { theme } from '@/lib/theme';
 
 SplashScreen.preventAutoHideAsync();
@@ -29,22 +28,43 @@ export default function RootLayout() {
     'TikTokSans-Section': require('../../assets/fonts/TikTokSans-Section.ttf'),
   });
 
-  const authStatus = useAuth((s) => s.status);
-  const onboarded = useAuth((s) => s.onboarded);
-
-  // Load the persisted session + active city + app settings once so the gate
-  // and every screen reflect them on launch (saves are a user-scoped Supabase
-  // query now; city/settings swap to the profile next).
+  // Restore the persisted session once; saves/city/settings are user-scoped
+  // Supabase data hydrated by useProfileBootstrap (inside the provider below).
   useEffect(() => {
     void useAuth.getState().hydrate();
-    void useCity.getState().hydrate();
-    void useSettings.getState().hydrate();
   }, []);
 
-  // Hold the native splash until BOTH fonts and the persisted session are in:
-  // rendering the navigator earlier would flash the auth flow at signed-in
-  // users before the gate flips.
-  const ready = (fontsLoaded || fontError != null) && authStatus !== 'restoring';
+  return (
+    // Required at the app root for react-native-gesture-handler (Swipeable on the
+    // Saved rows). Expo Router doesn't wrap this automatically.
+    <GestureHandlerRootView style={styles.root}>
+      <QueryClientProvider client={queryClient}>
+        <RootNavigator fontsReady={fontsLoaded || fontError != null} />
+        <StatusBar style="light" />
+      </QueryClientProvider>
+    </GestureHandlerRootView>
+  );
+}
+
+interface RootNavigatorProps {
+  fontsReady: boolean;
+}
+
+// Separate component so the profile bootstrap can use react-query (the provider
+// is rendered by RootLayout above).
+function RootNavigator({ fontsReady }: RootNavigatorProps) {
+  const authStatus = useAuthStatus();
+  const onboarded = useOnboarded();
+
+  // While signed in, load the profile + saves and mirror them into the stores
+  // before the gate renders — the app comes up with the USER'S city/language/
+  // prefs, not defaults (no flash of empty state).
+  const profileReady = useProfileBootstrap();
+
+  // Hold the native splash until fonts, the persisted session AND the profile
+  // mirrors are in: rendering the navigator earlier would flash the auth flow
+  // (or default settings) at signed-in users before the gate flips.
+  const ready = fontsReady && authStatus !== 'restoring' && profileReady;
   useEffect(() => {
     if (ready) {
       SplashScreen.hideAsync();
@@ -58,43 +78,36 @@ export default function RootLayout() {
   const signedIn = authStatus === 'signedIn';
 
   return (
-    // Required at the app root for react-native-gesture-handler (Swipeable on the
-    // Saved rows). Expo Router doesn't wrap this automatically.
-    <GestureHandlerRootView style={styles.root}>
-      <QueryClientProvider client={queryClient}>
-        {/* HARD GATE (CLAUDE.md): no guest browsing. Guards route by session +
-            onboarding state; when a guard flips, expo-router redirects to the
-            first available screen (sign-out → auth, onboarding done → tabs).
-            auth/callback stays outside the guards — the magic link must be
-            handleable from both gate states. */}
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: theme.colors.bg },
-          }}
-        >
-          <Stack.Protected guard={!signedIn}>
-            <Stack.Screen name="(auth)" />
-          </Stack.Protected>
-          <Stack.Protected guard={signedIn && !onboarded}>
-            <Stack.Screen name="onboarding/city" />
-            <Stack.Screen name="onboarding/notifications" />
-          </Stack.Protected>
-          <Stack.Protected guard={signedIn && onboarded}>
-            <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="search" />
-            <Stack.Screen name="event/[id]" />
-            <Stack.Screen name="city" />
-            <Stack.Screen name="profile/language" />
-            <Stack.Screen name="profile/reminders" />
-            <Stack.Screen name="profile/about" />
-            <Stack.Screen name="gallery" />
-          </Stack.Protected>
-          <Stack.Screen name="auth/callback" />
-        </Stack>
-        <StatusBar style="light" />
-      </QueryClientProvider>
-    </GestureHandlerRootView>
+    /* HARD GATE (CLAUDE.md): no guest browsing. Guards route by session +
+       onboarding state; when a guard flips, expo-router redirects to the
+       first available screen (sign-out → auth, onboarding done → tabs).
+       auth/callback stays outside the guards — the magic link must be
+       handleable from both gate states. */
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: theme.colors.bg },
+      }}
+    >
+      <Stack.Protected guard={!signedIn}>
+        <Stack.Screen name="(auth)" />
+      </Stack.Protected>
+      <Stack.Protected guard={signedIn && !onboarded}>
+        <Stack.Screen name="onboarding/city" />
+        <Stack.Screen name="onboarding/notifications" />
+      </Stack.Protected>
+      <Stack.Protected guard={signedIn && onboarded}>
+        <Stack.Screen name="(tabs)" />
+        <Stack.Screen name="search" />
+        <Stack.Screen name="event/[id]" />
+        <Stack.Screen name="city" />
+        <Stack.Screen name="profile/language" />
+        <Stack.Screen name="profile/reminders" />
+        <Stack.Screen name="profile/about" />
+        <Stack.Screen name="gallery" />
+      </Stack.Protected>
+      <Stack.Screen name="auth/callback" />
+    </Stack>
   );
 }
 

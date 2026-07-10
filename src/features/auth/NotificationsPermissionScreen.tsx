@@ -13,8 +13,8 @@ import { AuthConfirmation } from './AuthConfirmation';
 // Permission · Notifications (frame 253:1322) — the final onboarding step after
 // the city picker. "Turn on" raises the OS permission prompt; either choice
 // finishes onboarding (completeOnboarding flips the root gate, which redirects
-// into the tabs). The push preference lands in the LOCAL settings store for now
-// — Auth-2 moves it (and the actual token registration) to the user profile.
+// into the tabs). The push preference persists to the user's profile via the
+// settings mirror; actual token registration/scheduling is a later phase.
 export function NotificationsPermissionScreen() {
   const t = useT();
   const router = useRouter();

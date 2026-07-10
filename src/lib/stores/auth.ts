@@ -1,7 +1,8 @@
 import type { Session } from '@supabase/supabase-js';
-import * as SecureStore from 'expo-secure-store';
 import { create } from 'zustand';
 
+import { updateProfile } from '@/lib/api/profile';
+import { useCity } from '@/lib/stores/city';
 import { supabase } from '@/lib/supabase';
 
 // Auth/session store — the single source of truth the root hard gate reads
@@ -12,10 +13,10 @@ import { supabase } from '@/lib/supabase';
 // an auth-screen flash), then signedIn/signedOut driven by onAuthStateChange.
 //
 // `onboarded` marks the post-first-sign-in flow (city picker → notifications)
-// as completed. MVP: it's a DEVICE-level SecureStore flag, deliberately NOT
-// cleared on sign-out — the city choice is also still local (see the city
-// store), so a returning user on the same device skips straight to the app.
-// Auth-2 moves both onto the per-user Supabase profile.
+// as completed. It is PER-USER: profiles.onboarded_at is the source of truth,
+// mirrored here by useProfileBootstrap after the profile loads — so a returning
+// user skips onboarding on any device, and a different account on this device
+// gets its own onboarding.
 
 /**
  * Deep link the magic-link email redirects back to. Hardcoded (not
@@ -23,8 +24,6 @@ import { supabase } from '@/lib/supabase';
  * Supabase Auth → URL Configuration, in dev builds and release alike.
  */
 export const AUTH_REDIRECT_URL = 'ajmo://auth/callback';
-
-const ONBOARDED_KEY = 'ajmo.onboarded.v1';
 
 export type AuthStatus = 'restoring' | 'signedIn' | 'signedOut';
 
@@ -53,7 +52,7 @@ function parseAuthParams(url: string): URLSearchParams {
 interface AuthState {
   status: AuthStatus;
   session: Session | null;
-  /** Post-sign-in onboarding (city → notifications) completed on this device. */
+  /** Post-sign-in onboarding (city → notifications) completed for THIS user. */
   onboarded: boolean;
   /** Email the last sign-in code went to — for verify/resend. In-memory only. */
   lastEmail: string | null;
@@ -65,7 +64,9 @@ interface AuthState {
   verifyCode: (email: string, token: string) => Promise<string | null>;
   /** Establish the session from a magic-link callback deep link (fallback path). */
   completeFromUrl: (url: string) => Promise<AuthLinkResult>;
-  /** Mark the post-sign-in onboarding flow finished, then persist. */
+  /** Mirror of profiles.onboarded_at — set by useProfileBootstrap. */
+  setOnboarded: (onboarded: boolean) => void;
+  /** Mark the post-sign-in onboarding flow finished, then persist to the profile. */
   completeOnboarding: () => void;
   /** End the session (server + local) and return to the auth flow via the gate. */
   signOut: () => Promise<void>;
@@ -80,18 +81,15 @@ export const useAuth = create<AuthState>((set, get) => ({
   hydrate: async () => {
     if (get().status !== 'restoring') return;
     let session: Session | null = null;
-    let onboarded = false;
     try {
-      const [{ data }, onboardedRaw] = await Promise.all([
-        supabase.auth.getSession(),
-        SecureStore.getItemAsync(ONBOARDED_KEY).catch(() => null),
-      ]);
+      const { data } = await supabase.auth.getSession();
       session = data.session;
-      onboarded = onboardedRaw === 'true';
     } catch {
       // Unreadable storage — treat as signed out; the gate shows the auth flow.
     }
-    set({ session, onboarded, status: session ? 'signedIn' : 'signedOut' });
+    // `onboarded` stays false here — useProfileBootstrap mirrors it from the
+    // profile before the gate renders (the splash covers the fetch).
+    set({ session, status: session ? 'signedIn' : 'signedOut' });
     // Keep the gate in sync from here on (sign-in via deep link, sign-out,
     // token refresh, session expiry).
     supabase.auth.onAuthStateChange((_event, next) => {
@@ -145,10 +143,20 @@ export const useAuth = create<AuthState>((set, get) => ({
     return 'noParams';
   },
 
+  setOnboarded: (onboarded) => set({ onboarded }),
+
   completeOnboarding: () => {
     set({ onboarded: true });
-    // Fire-and-forget; a failed write just means onboarding repeats next launch.
-    SecureStore.setItemAsync(ONBOARDED_KEY, 'true').catch(() => {});
+    // Persist to the profile together with the active city, so a profile is
+    // never "onboarded but city-less" (the user may have kept the pre-selected
+    // default, which the picker never wrote). Fire-and-forget; a failed write
+    // just means onboarding repeats next launch.
+    updateProfile({
+      onboardedAt: new Date().toISOString(),
+      activeCity: useCity.getState().activeCity,
+    }).catch((error: unknown) => {
+      if (__DEV__) console.warn('[auth] onboarding profile write failed', error);
+    });
   },
 
   signOut: async () => {
@@ -165,7 +173,7 @@ export const useAuth = create<AuthState>((set, get) => ({
 /** Reactive: the gate status (restoring / signedIn / signedOut). */
 export const useAuthStatus = (): AuthStatus => useAuth((s) => s.status);
 
-/** Reactive: whether the post-sign-in onboarding flow finished on this device. */
+/** Reactive: whether the post-sign-in onboarding flow finished for this user. */
 export const useOnboarded = (): boolean => useAuth((s) => s.onboarded);
 
 /** Reactive: the signed-in user's email (undefined while signed out). */

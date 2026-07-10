@@ -11,8 +11,9 @@ import { Button, Header, Screen, Text } from '@/ui';
 // first sign-in (the gate anchors here while onboarding is unfinished). Reuses
 // the shared CityPicker; the chrome differs from the in-app /city route: an H1
 // prompt (no centered header title) and a Continue CTA that advances to the
-// notifications-permission step. Selecting a city writes the local store
-// immediately (Auth-2 moves it to the profile).
+// notifications-permission step. Selecting a city writes the city mirror (and
+// through it the user's profile) immediately; finishing onboarding persists the
+// final choice with onboarded_at either way.
 export default function OnboardingCityScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
