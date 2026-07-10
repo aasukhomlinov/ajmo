@@ -2,7 +2,9 @@ import type { Session } from '@supabase/supabase-js';
 import { create } from 'zustand';
 
 import { updateProfile } from '@/lib/api/profile';
+import { queryClient } from '@/lib/queryClient';
 import { useCity } from '@/lib/stores/city';
+import { useSettings } from '@/lib/stores/settings';
 import { supabase } from '@/lib/supabase';
 
 // Auth/session store — the single source of truth the root hard gate reads
@@ -91,9 +93,12 @@ export const useAuth = create<AuthState>((set, get) => ({
     // profile before the gate renders (the splash covers the fetch).
     set({ session, status: session ? 'signedIn' : 'signedOut' });
     // Keep the gate in sync from here on (sign-in via deep link, sign-out,
-    // token refresh, session expiry).
+    // token refresh, session expiry). A session LOSS outside signOut (expiry,
+    // server-side revoke) must also drop the user-scoped state.
     supabase.auth.onAuthStateChange((_event, next) => {
+      const hadSession = get().session != null;
       set({ session: next, status: next ? 'signedIn' : 'signedOut' });
+      if (!next && hadSession) clearUserScopedState();
     });
   },
 
@@ -166,9 +171,22 @@ export const useAuth = create<AuthState>((set, get) => ({
       // the gate returns to auth; the refresh token dies on its own server-side.
       await supabase.auth.signOut({ scope: 'local' }).catch(() => {});
     }
-    set({ session: null, status: 'signedOut', lastEmail: null });
+    set({ session: null, status: 'signedOut', lastEmail: null, onboarded: false });
+    clearUserScopedState();
   },
 }));
+
+// Drop everything scoped to the signed-out user so the next account never sees
+// the previous one's saves/city/settings: the react-query cache (profile, saves
+// — the public events cache goes with it, it just refetches) and the settings/
+// city mirrors back to defaults. The auth screens render in the default
+// language afterwards, which is correct — language is a per-user setting.
+function clearUserScopedState(): void {
+  queryClient.clear();
+  useSettings.getState().reset();
+  useCity.getState().reset();
+  useAuth.setState({ onboarded: false });
+}
 
 /** Reactive: the gate status (restoring / signedIn / signedOut). */
 export const useAuthStatus = (): AuthStatus => useAuth((s) => s.status);

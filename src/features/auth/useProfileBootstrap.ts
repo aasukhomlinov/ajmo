@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 
+import { carryOverLegacyLocalState } from '@/lib/api/carryover';
 import { fetchProfile, profileKeys, type Profile } from '@/lib/api/profile';
 import { fetchSavedIds, savesKeys } from '@/lib/api/saves';
 import { useAuth } from '@/lib/stores/auth';
@@ -16,8 +17,13 @@ import { useSettings } from '@/lib/stores/settings';
 // no mis-routed onboarding. The saved ids are prefetched alongside (not
 // awaited — the feed has its own skeletons/error states).
 
+// Fetch + the one-time legacy carry-over: a device that onboarded before
+// Auth-2 donates its local city/settings/saves to a not-yet-onboarded profile
+// (idempotent — see carryover.ts). Composed here so the splash covers it and a
+// failure retries with the query.
 async function loadProfile(userId: string): Promise<Profile> {
-  return fetchProfile(userId);
+  const profile = await fetchProfile(userId);
+  return carryOverLegacyLocalState(userId, profile);
 }
 
 /**
