@@ -5,9 +5,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { cityHeaderLabel } from '@/lib/cities';
 import { dateChipLabel, timeLabel } from '@/lib/datetime';
+import { useSavedIdSet, useToggleSave } from '@/lib/api/saves';
 import { useT } from '@/lib/i18n';
 import { useActiveCity } from '@/lib/stores/city';
-import { useSaves, useSavedIds } from '@/lib/stores/saves';
 import { theme } from '@/lib/theme';
 import type { Event } from '@/lib/types';
 import { EmptyState, EventCardSkeleton, ListSectionHeader, Screen } from '@/ui';
@@ -20,7 +20,8 @@ import { useDiscoverFeed, type EventSection } from './useDiscoverFeed';
 
 // Discover feed — the populated list (frame 177:832), the no-match empty state
 // (272:1353) and the skeleton loading state (273:1388). City scope comes from
-// the shared city store (set via the picker); save state is local-only for now.
+// the shared city store (set via the picker); save state is the user's Supabase
+// saves query.
 
 // Clearance so the last card scrolls clear of the floating glass TabBar capsule
 // (≈48pt tall, sitting above the safe-area inset) instead of hiding behind it.
@@ -48,11 +49,11 @@ export function DiscoverScreen() {
     clearFilters,
   } = useDiscoverFeed(activeCity);
 
-  // Save state now lives in the shared store so the feed, Event Detail and the
-  // Saved screen all reflect the same set (CLAUDE.md: saves are per-user; the
-  // store swaps to a Supabase mutation later).
-  const savedIds = useSavedIds();
-  const toggleSave = useSaves((s) => s.toggleSave);
+  // Save state is the user-scoped Supabase query, shared with Event Detail and
+  // the Saved screen. Toggling is optimistic — the check flips instantly and
+  // rolls back if the write fails.
+  const savedIds = useSavedIdSet();
+  const toggleSave = useToggleSave();
 
   const renderItem = useCallback(
     ({ item }: { item: Event }) => (
@@ -67,7 +68,7 @@ export function DiscoverScreen() {
           imageUrl={item.cover_url}
           saved={savedIds.has(item.id)}
           onPress={() => router.push({ pathname: '/event/[id]', params: { id: item.id } })}
-          onToggleSave={() => toggleSave(item.id)}
+          onToggleSave={() => toggleSave(item.id, savedIds.has(item.id))}
         />
       </View>
     ),

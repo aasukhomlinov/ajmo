@@ -4,8 +4,8 @@ import { FlatList, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useSavedEvents } from '@/lib/api/events';
+import { useSavedIdsQuery, useToggleSave } from '@/lib/api/saves';
 import { useT } from '@/lib/i18n';
-import { useSaves, useSavedIds } from '@/lib/stores/saves';
 import { theme } from '@/lib/theme';
 import type { Event } from '@/lib/types';
 import { EmptyState, EventRowSkeleton, Header, Screen } from '@/ui';
@@ -14,11 +14,11 @@ import { SavedRow } from './SavedRow';
 
 // Saved tab (app frames Saved 160:221 / Saved — Empty 166:300). A flat, shared
 // list of the user's bookmarked events: Header "Saved" + a column of EventRow
-// (the square-thumb single-line row). The saved ids come from the local store;
-// the event rows themselves are resolved from Supabase by id. The list is NOT
-// city-scoped — saves are a flat cross-city bookmark list (CLAUDE.md: "the Saved
-// list is flat"), unlike the city-scoped Discover/Search feeds. When auth lands
-// the id set moves to a per-user Supabase table; this fetch-by-id stays.
+// (the square-thumb single-line row). The saved ids come from the user-scoped
+// Supabase saves query; the event rows themselves are resolved by id. The list
+// is NOT city-scoped — saves are a flat cross-city bookmark list (CLAUDE.md:
+// "the Saved list is flat"), unlike the city-scoped Discover/Search feeds.
+// Swipe-to-delete unsaves through the same optimistic toggle as the feed card.
 
 // Clearance so the last row scrolls clear of the floating glass TabBar capsule
 // (mirrors DiscoverScreen).
@@ -29,11 +29,11 @@ export function SavedScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const t = useT();
-  const savedIds = useSavedIds();
-  const toggleSave = useSaves((s) => s.toggleSave);
+  const idsQuery = useSavedIdsQuery();
+  const toggleSave = useToggleSave();
 
-  // The store holds the ids; the rows are fetched from Supabase by id.
-  const ids = useMemo(() => Array.from(savedIds), [savedIds]);
+  // The saves query holds the ids; the rows are fetched from Supabase by id.
+  const ids = useMemo(() => idsQuery.data ?? [], [idsQuery.data]);
   const { data, isLoading, isError, refetch } = useSavedEvents(ids);
 
   // Soonest-first (ISO strings sort chronologically). Recomputes whenever the
@@ -52,16 +52,19 @@ export function SavedScreen() {
     <Screen>
       <Header title={t('saved.title')} />
 
-      {isError ? (
+      {idsQuery.isError || isError ? (
         <View style={styles.emptyWrap}>
           <EmptyState
             title={t('saved.errorTitle')}
             description={t('common.connectionError')}
             actionLabel={t('common.retry')}
-            onAction={() => refetch()}
+            onAction={() => {
+              void idsQuery.refetch();
+              void refetch();
+            }}
           />
         </View>
-      ) : hasSaves && isLoading ? (
+      ) : idsQuery.isLoading || (hasSaves && isLoading) ? (
         <View style={styles.skeletons}>
           {Array.from({ length: SKELETON_COUNT }, (_, i) => (
             <EventRowSkeleton key={i} />
@@ -84,7 +87,7 @@ export function SavedScreen() {
             <SavedRow
               event={item}
               onPress={() => openEvent(item.id)}
-              onDelete={() => toggleSave(item.id)}
+              onDelete={() => toggleSave(item.id, true)}
             />
           )}
           ItemSeparatorComponent={Separator}

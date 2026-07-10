@@ -10,7 +10,6 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { queryClient } from '@/lib/queryClient';
 import { useAuth } from '@/lib/stores/auth';
 import { useCity } from '@/lib/stores/city';
-import { useSaves } from '@/lib/stores/saves';
 import { useSettings } from '@/lib/stores/settings';
 import { theme } from '@/lib/theme';
 
@@ -33,12 +32,11 @@ export default function RootLayout() {
   const authStatus = useAuth((s) => s.status);
   const onboarded = useAuth((s) => s.onboarded);
 
-  // Load the persisted session + saves + active city + app settings once so
-  // the gate and every screen reflect them on launch (saves/city/settings are
-  // local stores; Auth-2 swaps them to per-user Supabase queries).
+  // Load the persisted session + active city + app settings once so the gate
+  // and every screen reflect them on launch (saves are a user-scoped Supabase
+  // query now; city/settings swap to the profile next).
   useEffect(() => {
     void useAuth.getState().hydrate();
-    void useSaves.getState().hydrate();
     void useCity.getState().hydrate();
     void useSettings.getState().hydrate();
   }, []);

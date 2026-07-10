@@ -14,9 +14,9 @@ import { Linking, ScrollView, Share, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
+import { useIsSaved, useToggleSave } from '@/lib/api/saves';
 import { detailDateLabel, timeLabel } from '@/lib/datetime';
 import { useT } from '@/lib/i18n';
-import { useIsSaved, useSaves } from '@/lib/stores/saves';
 import { theme } from '@/lib/theme';
 import type { Event } from '@/lib/types';
 import { Badge, Button, Carousel, Divider, IconButton, PageDots, Screen, Text } from '@/ui';
@@ -31,8 +31,8 @@ import { LocationPreview } from './LocationPreview';
 // single local Save is a wide Button that flips DS variant on toggle — Primary
 // (lime, + SAVE) when unsaved → Secondary (neutral outline, ✓ SAVED, no lime)
 // once saved — beside a secondary Open-in-browser icon button (ArrowUpRight →
-// the event's web page). No backend here — save is local, Share is the native
-// sheet, browser/maps are external links.
+// the event's web page). Save writes the user's Supabase saves (optimistic);
+// Share is the native sheet, browser/maps are external links.
 const HERO_RATIO = 4 / 5;
 const META_ICON = 20;
 const ACTION_ICON = 24;
@@ -45,10 +45,10 @@ export function EventDetailScreen({ event }: EventDetailScreenProps) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const t = useT();
-  // Save state comes from the shared store — toggling here is reflected in the
-  // feed card and the Saved screen, and vice versa.
+  // Save state comes from the shared user-scoped query — toggling here is
+  // reflected in the feed card and the Saved screen, and vice versa.
   const saved = useIsSaved(event.id);
-  const toggleSave = useSaves((s) => s.toggleSave);
+  const toggleSave = useToggleSave();
   const [coverIndex, setCoverIndex] = useState(0);
 
   const onShare = useCallback(() => {
@@ -193,7 +193,7 @@ export function EventDetailScreen({ event }: EventDetailScreenProps) {
           label={saved ? t('event.saved') : t('event.save')}
           type={saved ? 'secondary' : 'primary'}
           leftIcon={saved ? Check : Plus}
-          onPress={() => toggleSave(event.id)}
+          onPress={() => toggleSave(event.id, saved)}
           style={styles.saveButton}
         />
         <IconButton
