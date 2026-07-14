@@ -25,8 +25,8 @@ import { categoryLabel } from '../discover/categories';
 import { LocationPreview } from './LocationPreview';
 
 // Event Detail (app frame 152:178). Full-bleed 4:5 Carousel cover (paginates +
-// shows dots when the event has multiple covers) with a soft bottom scrim and a
-// top scrim; overlaid cover chrome = back (top-left) + Share (top-right). A
+// shows dots when the event has multiple covers) with a soft bottom scrim;
+// overlaid cover chrome = back (top-left) + Share (top-right). A
 // scrolling body (heading, meta, about, location) and a pinned action bar: the
 // single local Save is a wide Button that flips DS variant on toggle — Primary
 // (lime, + SAVE) when unsaved → Secondary (neutral outline, ✓ SAVED, no lime)
@@ -93,19 +93,10 @@ export function EventDetailScreen({ event }: EventDetailScreenProps) {
             </Svg>
           </View>
 
-          <View style={styles.topScrim} pointerEvents="none">
-            <Svg width="100%" height="100%" preserveAspectRatio="none">
-              <Defs>
-                <LinearGradient id="heroTop" x1="0" y1="0" x2="0" y2="1">
-                  <Stop offset="0" stopColor={theme.colors.bg} stopOpacity={0.6} />
-                  <Stop offset="1" stopColor={theme.colors.bg} stopOpacity={0} />
-                </LinearGradient>
-              </Defs>
-              <Rect width="100%" height="100%" fill="url(#heroTop)" />
-            </Svg>
-          </View>
-
-          {/* Cover chrome: back (left) + Share (right) */}
+          {/* Cover chrome: back (left) + Share (right) — no top scrim: the
+              overlay IconButtons carry their own scrim bg, and the hero sits
+              below the status bar (Screen top safe-area), so nothing else up
+              there needs contrast help. Poster art stays undimmed (Afiša). */}
           <View style={[styles.topBar, { top: theme.spacing.lg }]}>
             <IconButton
               icon={<ArrowLeft size={ACTION_ICON} color={theme.colors.text.primary} />}
@@ -221,13 +212,6 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: '32%',
-  },
-  topScrim: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    top: 0,
-    height: 120,
   },
   topBar: {
     position: 'absolute',
