@@ -10,7 +10,7 @@
     "ios": {
       "icon": "./assets/expo.icon",
       "supportsTablet": false,
-      "bundleIdentifier": "com.anonymous.ajmo",
+      "bundleIdentifier": "events.ajmo.app",
       "infoPlist": {
         "LSApplicationQueriesSchemes": ["maps", "comgooglemaps", "yandexmaps", "dgis", "message"]
       }
