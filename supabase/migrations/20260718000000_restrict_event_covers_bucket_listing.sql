@@ -1,0 +1,11 @@
+-- Security advisor lint 0025 (public_bucket_allows_listing): the broad public
+-- SELECT policy on storage.objects let anyone LIST/enumerate every file in the
+-- public "event-covers" bucket.
+--
+-- Fix: drop the SELECT policy. event-covers is a PUBLIC bucket, so objects are
+-- served at /storage/v1/object/public/... bypassing RLS — direct cover URLs
+-- (app + landing) keep loading. RLS only governs the list/authenticated API, so
+-- removing the policy closes enumeration without breaking reads-by-URL. Writes
+-- were already service-role only (no insert/update/delete policy → parser Edge
+-- Function still uploads via the service role).
+drop policy if exists "Event covers are publicly readable" on storage.objects;
