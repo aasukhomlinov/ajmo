@@ -18,6 +18,5 @@ export const APP_VERSION_LABEL = `v${version} (${build})`;
 export const APP_VERSION_NUMBER = `${version} (${build})`;
 
 // External legal links opened from the Profile hub via Linking.openURL.
-// TODO: point these at the real ajmo site once it exists (placeholders for now).
-export const PRIVACY_URL = 'https://ajmo.app/privacy';
-export const TERMS_URL = 'https://ajmo.app/terms';
+export const PRIVACY_URL = 'https://ajmo.events/privacy';
+export const TERMS_URL = 'https://ajmo.events/terms';
