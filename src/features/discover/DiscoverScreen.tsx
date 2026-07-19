@@ -62,7 +62,7 @@ export function DiscoverScreen() {
           title={item.title}
           venue={`${item.venue.name} · ${item.venue.address}`}
           time={timeLabel(item.starts_at, item.ends_at)}
-          price={item.price_text}
+          price={item.is_free ? t('event.free') : item.price_text}
           dateLabel={dateChipLabel(item.starts_at, t.lang)}
           category={categoryLabel(item.category, t)}
           imageUrl={item.cover_url}

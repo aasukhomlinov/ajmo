@@ -67,12 +67,14 @@ export function EventCard({
                   {time}
                 </Text>
               </View>
-              <View style={styles.metaItem}>
-                <Ticket size={META_ICON_SIZE} color={theme.colors.text.secondary} />
-                <Text variant="bodySmall" color={theme.colors.text.secondary}>
-                  {price}
-                </Text>
-              </View>
+              {price ? (
+                <View style={styles.metaItem}>
+                  <Ticket size={META_ICON_SIZE} color={theme.colors.text.secondary} />
+                  <Text variant="bodySmall" color={theme.colors.text.secondary}>
+                    {price}
+                  </Text>
+                </View>
+              ) : null}
             </View>
 
             <View style={styles.metaItem}>

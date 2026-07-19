@@ -147,10 +147,12 @@ export function EventDetailScreen({ event }: EventDetailScreenProps) {
                 </Text>
               </View>
             </View>
-            <View style={styles.metaRow}>
-              <Ticket size={META_ICON} color={theme.colors.text.secondary} />
-              <Text variant="bodySmall">{priceLine}</Text>
-            </View>
+            {priceLine ? (
+              <View style={styles.metaRow}>
+                <Ticket size={META_ICON} color={theme.colors.text.secondary} />
+                <Text variant="bodySmall">{priceLine}</Text>
+              </View>
+            ) : null}
           </View>
 
           <Divider />

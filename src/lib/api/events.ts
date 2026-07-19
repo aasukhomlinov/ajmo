@@ -27,7 +27,7 @@ const EVENT_SELECT = `
   is_free,
   covers,
   source_url,
-  venues!inner ( name, address, lat, lng ),
+  venues!inner ( name, address, lat, lng, photo_url ),
   cities!inner ( slug )
 ` as const;
 
@@ -53,6 +53,7 @@ interface RawVenue {
   address: string | null;
   lat: number | null;
   lng: number | null;
+  photo_url: string | null;
 }
 
 interface RawEventRow {
@@ -109,7 +110,9 @@ function mapEventRow(row: RawEventRow, lang: LanguageCode): Event {
     ends_at: row.ends_at ?? undefined,
     price_text: row.price_text ?? '',
     is_free: row.is_free,
-    cover_url: covers[0] ?? '',
+    // Coverless events fall back to the venue's photo (parser rows where no
+    // poster could be resolved); '' keeps the placeholder surface.
+    cover_url: covers[0] ?? venue?.photo_url ?? '',
     covers: covers.length > 1 ? covers : undefined,
     source_url: row.source_url ?? '',
   };

@@ -1,23 +1,39 @@
-// Universal venue parser (parse-venue).
+// Universal venue parser (parse-venue) — v2, phased.
 //
-// One function, per-source adapters, driven by `sources` rows the same way
-// parse-dcloza is (kind 'official' | 'tickets' → HTML page, 'telegram' →
-// t.me/s/<channel> preview). One Claude call per venue page extracts an
-// ARRAY of events; validated events are inserted into `events` with the
-// same dedup guard DC Loža relies on (events_dedup_idx unique index →
-// 23505 treated as duplicate). Instagram is out of scope.
+// Three independent phases per venue so no slow step can abort another
+// mid-insert (Supabase kills edge requests at ~150s wall clock):
+//   extract   — claude-sonnet-4-6, SOURCE language only, one call per HTML
+//               page / per 5-post telegram chunk (newest 10, two chunks,
+//               inserted chunk-by-chunk). Captures a raw cover URL or the
+//               event's own detail-page URL for phase `covers`.
+//   translate — claude-haiku-4-5 (same model as parse-dcloza), batched;
+//               fills title_i18n/description_i18n (en/ru/sr) for rows where
+//               title_i18n is null, using DC Loža's translation rules.
+//   covers    — no LLM. Re-hosts raw cover URLs (telegram CDN expires) or
+//               resolves og:image from the event's detail page, into the
+//               event-covers bucket. Per-image timeout + one retry.
 //
-// Invoke with {"venue_id": "..."} (or ?venue_id=) for one venue, or with no
-// args to run every enabled non-instagram source except dcloza (which keeps
-// its own function). Returns a per-venue summary.
+// Invoke: POST {"venue_id": "...", "phase": "extract"|"translate"|"covers"}
+// (phase defaults to extract; venue_id is required — no batch mode).
+// Dedup stays the events_dedup_idx unique index (venue, starts_at,
+// lower(title)); a 23505 backfills covers/source_url on the existing row.
+// events.title stays in the SOURCE language — rewriting it would break the
+// dedup key on re-parses; the app reads title_i18n with a scalar fallback.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 const TZ = 'Europe/Belgrade';
-const ANTHROPIC_MODEL = 'claude-sonnet-4-6';
+const EXTRACT_MODEL = 'claude-sonnet-4-6';
+const TRANSLATE_MODEL = 'claude-haiku-4-5'; // matches parse-dcloza
 const ANTHROPIC_URL = 'https://api.anthropic.com/v1/messages';
 const MAX_PAYLOAD_CHARS = 50_000;
 const MAX_MONTHS_AHEAD = 12;
+const TELEGRAM_POSTS = 10; // newest N posts, split into chunks of…
+const TELEGRAM_CHUNK = 5;
+const TRANSLATE_BATCH = 10;
+const PHASE_TIME_BUDGET_MS = 100_000; // stop starting new work past this; re-run resumes
+const STORAGE_BUCKET = 'event-covers';
+const PUBLIC_OBJECT_MARKER = '/storage/v1/object/public/';
 
 type Admin = ReturnType<typeof createClient>;
 
@@ -28,13 +44,11 @@ interface Source {
   url: string;
   city_id: string;
   venue_id: string;
-  enabled: boolean;
 }
 
 interface ExtractedEvent {
   title: string;
   description: string | null;
-  /** Belgrade local naive ISO: 'YYYY-MM-DDTHH:MM:SS' or 'YYYY-MM-DD'. */
   date_start: string;
   date_end: string | null;
   price_min_rsd: number | null;
@@ -42,20 +56,6 @@ interface ExtractedEvent {
   event_url: string | null;
   image_url: string | null;
   category: string | null;
-}
-
-interface VenueSummary {
-  venue: string;
-  handle: string;
-  kind: string;
-  fetched_bytes: number;
-  payload_chars: number;
-  events_extracted: number;
-  events_upserted: number;
-  duplicates: number;
-  dropped_invalid: number;
-  errors: string[];
-  samples: unknown[];
 }
 
 const CATEGORIES = new Set(['music', 'party', 'art', 'food', 'cinema', 'theatre', 'market', 'other']);
@@ -94,28 +94,37 @@ function belgradeToInstant(local: string): string | null {
   return new Date(naiveUTC - offset * 60000).toISOString();
 }
 
-// ── Adapters: source → text payload for the LLM ──────────────────────────────
-/** Strip markup down to visible text. The LLM handles remaining noise. */
-function cleanHtml(html: string): string {
+// ── HTML → text (links preserved so the LLM can emit event_url) ──────────────
+/** `origin` resolves root-relative hrefs (tickets.rs links events as /event/…). */
+function cleanHtml(html: string, origin = ''): string {
   return html
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/<(nav|footer|header)[\s\S]*?<\/\1>/gi, ' ')
+    // Keep event detail-page links: <a href="U">T</a> → "T (U)".
+    .replace(
+      /<a\b[^>]*href="((?:https?:\/\/|\/)[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi,
+      (_, href: string, text: string) =>
+        `${text} (${href.startsWith('/') ? origin + href : href})`,
+    )
     .replace(/<[^>]+>/g, ' ')
     .replace(/&nbsp;/g, ' ')
     .replace(/&amp;/g, '&')
     .replace(/&lt;/g, '<')
     .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
     .replace(/&#39;|&#8217;/g, "'")
-    .replace(/&#8220;|&#8221;/g, '"')
+    // Typographic quotes stay typographic: ASCII " inside titles made the
+    // model emit unescaped quotes in JSON strings (deterministic parse fail).
+    .replace(/&quot;|&#8220;/g, '“')
+    .replace(/&#8221;/g, '”')
+    .replace(/&#8222;/g, '„')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
-/** t.me/s preview → one text block per post, with post date + cover URL inline. */
-function telegramPayload(html: string, handle: string): string {
+/** t.me/s preview → newest N post blocks (post date + cover URL inline). */
+function telegramPosts(html: string, handle: string): string[] {
   const blocks = html.split(
     new RegExp(`(?=<div class="tgme_widget_message[^"]*?" data-post="${handle}/)`),
   );
@@ -136,46 +145,137 @@ function telegramPayload(html: string, handle: string): string {
       `POST https://t.me/${handle}/${idMatch[1]} | published: ${dateMatch?.[1] ?? 'unknown'} | image: ${photoMatch?.[1] ?? 'none'}\n${text}`,
     );
   }
-  // Newest posts only: t.me/s lists oldest→newest, and the gateway kills
-  // responses at 150s — a full 20-post extraction blows that budget.
-  // ponytail: fixed cap of 12; page through history if backfill ever matters.
-  return posts.slice(-10).join('\n\n---\n\n');
+  return posts.slice(-TELEGRAM_POSTS);
 }
 
-// ── Claude extraction: one call per venue page, array of events ──────────────
-// Plain-text strict JSON, not forced tool_use: tool grammars may \u-escape
-// Cyrillic (6 ASCII chars per RU char), and Russian-channel extraction already
-// runs ~110s — close to the platform's 150s wall clock. Text JSON keeps UTF-8
-// raw; the post cap + max_tokens + fetch timeouts keep the run inside budget.
-const OUTPUT_SPEC = `Respond with ONLY a JSON array — no prose, no markdown fences. Each element:
+// ── Claude plumbing ──────────────────────────────────────────────────────────
+// Plain-text strict JSON, not tool_use: tool grammars may \u-escape Cyrillic
+// and Russian outputs are already the slowest part of the pipeline.
+async function claudeCall(
+  apiKey: string,
+  model: string,
+  system: string,
+  user: string,
+  maxTokens: number,
+  timeoutMs: number,
+): Promise<string> {
+  const res = await fetch(ANTHROPIC_URL, {
+    method: 'POST',
+    signal: AbortSignal.timeout(timeoutMs),
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: 'user', content: user }],
+    }),
+  });
+  if (!res.ok) throw new Error(`Anthropic ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  const data = await res.json();
+  if (data.stop_reason === 'max_tokens') throw new Error('response truncated at max_tokens');
+  return (data.content ?? [])
+    .filter((b: { type: string }) => b.type === 'text')
+    .map((b: { text: string }) => b.text)
+    .join('');
+}
+
+/**
+ * Escape unescaped `"` inside string values. sonnet-4-6 (no sampling params)
+ * deterministically emits ASCII quotes in its own prose ("band name" etc.)
+ * despite instructions — a retry reproduces the same bytes, so repair locally.
+ * Heuristic: a quote inside a string closes it only when the next non-space
+ * char is structural (, } ] :); anything else is content → escape it.
+ */
+function escapeInnerQuotes(json: string): string {
+  let out = '';
+  let inString = false;
+  for (let i = 0; i < json.length; i++) {
+    const c = json[i];
+    if (!inString) {
+      if (c === '"') inString = true;
+      out += c;
+      continue;
+    }
+    if (c === '\\') {
+      out += c + (json[i + 1] ?? '');
+      i++;
+      continue;
+    }
+    if (c === '"') {
+      let j = i + 1;
+      while (j < json.length && /\s/.test(json[j])) j++;
+      const next = json[j];
+      if (next === ',' || next === '}' || next === ']' || next === ':' || j >= json.length) {
+        inString = false;
+        out += c;
+      } else {
+        out += '\\"';
+      }
+      continue;
+    }
+    out += c;
+  }
+  return out;
+}
+
+function parseJsonArray<T>(text: string): T[] {
+  const start = text.indexOf('[');
+  const end = text.lastIndexOf(']');
+  if (start === -1 || end <= start) throw new Error(`no JSON array in response: ${text.slice(0, 200)}`);
+  const slice = text.slice(start, end + 1);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(slice);
+  } catch {
+    parsed = JSON.parse(escapeInnerQuotes(slice)); // repair pass for inner quotes
+  }
+  if (!Array.isArray(parsed)) throw new Error('response JSON is not an array');
+  return parsed as T[];
+}
+
+async function claudeJsonArray<T>(
+  apiKey: string,
+  model: string,
+  system: string,
+  user: string,
+  maxTokens: number,
+  timeoutMs: number,
+): Promise<T[]> {
+  const text = await claudeCall(apiKey, model, system, user, maxTokens, timeoutMs);
+  try {
+    return parseJsonArray<T>(text);
+  } catch {
+    // Malformed JSON (unescaped quote etc.) — one fresh attempt. HTTP errors
+    // and timeouts above are NOT retried; only cheap-to-fix garbage output is.
+    return parseJsonArray<T>(await claudeCall(apiKey, model, system, user, maxTokens, timeoutMs));
+  }
+}
+
+// ── Phase: extract ───────────────────────────────────────────────────────────
+const EXTRACT_SPEC = `Respond with ONLY a JSON array — no prose, no markdown fences. Each element:
 {
-  "title": string,
-  "description": string | null,        // ONE short sentence (max ~15 words) in the page's language
+  "title": string,                     // in the SOURCE language, verbatim from the page — do NOT translate
+  "description": string | null,        // ONE short sentence (max ~15 words) in the SOURCE language
   "date_start": string,                // Belgrade local naive ISO 'YYYY-MM-DDTHH:MM:SS' (no offset); 'YYYY-MM-DD' when no time is stated (exhibitions)
   "date_end": string | null,           // same format; only for ranges (exhibitions/festivals)
   "price_min_rsd": number | null,      // minimum ticket price as plain number ("od 4.500,00 RSD" → 4500)
   "is_free": boolean | null,
-  "event_url": string | null,
-  "image_url": string | null,
+  "event_url": string | null,          // the event's OWN detail-page URL when the page links one — look for "(https://...)" after the title
+  "image_url": string | null,          // a poster/image URL when directly available
   "category": "music" | "party" | "art" | "food" | "cinema" | "theatre" | "market" | "other" | null
 }
-Return [] if the page has no resolvable upcoming events.`;
+Escape any double quotes inside JSON string values (Serbian titles often contain "quoted" names).
+Return [] if the input has no resolvable upcoming events.`;
 
-/** Tolerant parse: model may still wrap the array in fences or a sentence. */
-function parseEventsJson(text: string): ExtractedEvent[] {
-  const start = text.indexOf('[');
-  const end = text.lastIndexOf(']');
-  if (start === -1 || end <= start) throw new Error(`no JSON array in response: ${text.slice(0, 200)}`);
-  const parsed = JSON.parse(text.slice(start, end + 1));
-  if (!Array.isArray(parsed)) throw new Error('response JSON is not an array');
-  return parsed as ExtractedEvent[];
-}
-
-function systemPrompt(source: Source, venueName: string): string {
+function extractPrompt(source: Source, venueName: string): string {
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date());
   return `You extract structured events from one venue's page as STRICT JSON (never prose). The venue is ALWAYS "${venueName}" (Belgrade); never extract other venues.
 
-${OUTPUT_SPEC}
+${EXTRACT_SPEC}
 
 Today is ${today} (Europe/Belgrade).
 
@@ -187,50 +287,292 @@ RULES:
 - IGNORE navigation, SEO keyword spam, "Ostala mesta u blizini" (nearby-venue) sections, and unrelated cities.
 ${source.kind === 'telegram'
     ? `- The input is a list of Telegram channel posts. Posts may omit the YEAR — infer it from the post's "published:" date (the event is on or shortly after it). Skip weekly schedule digests bundling many events, promos, and posts without a concrete event date. Use the post's image URL as image_url and the post URL as event_url.`
-    : `- Set event_url / image_url only from URLs literally present in the text; null otherwise.`}
+    : `- event_url/image_url only from URLs literally present in the input; null otherwise.`}
 - CATEGORY: one of music, party, art, food, cinema, theatre, market, other. Exhibitions → "art", film → "cinema", concerts → "music", DJ/club → "party", ballet/opera/plays/talk-show-style stage shows → "theatre", lectures/games/workshops → "other". Null if truly unclear.
-- description: ONE short sentence (max ~15 words) in the page's language, or null when the page gives nothing beyond the title. Be terse — this runs under a hard time budget.`;
+- Keep title and description in the page's OWN language — translation happens in a separate pass.`;
 }
 
-async function extractEvents(
+interface ExistingRow {
+  id: string;
+  title: string;
+  starts_at: string;
+  covers: string[] | null;
+  source_url: string | null;
+}
+
+interface ExtractSummary {
+  phase: 'extract';
+  venue: string;
+  fetched_bytes: number;
+  chunks: number;
+  events_extracted: number;
+  events_upserted: number;
+  backfilled: number;
+  duplicates: number;
+  dropped_invalid: number;
+  errors: string[];
+  samples: unknown[];
+  elapsed_ms: number;
+}
+
+async function phaseExtract(
+  admin: Admin,
   source: Source,
   venueName: string,
-  payload: string,
   apiKey: string,
-): Promise<ExtractedEvent[]> {
-  const res = await fetch(ANTHROPIC_URL, {
-    method: 'POST',
-    signal: AbortSignal.timeout(125_000),
-    headers: {
-      'x-api-key': apiKey,
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: ANTHROPIC_MODEL,
-      max_tokens: 4096, // ponytail: output time is the 150s-wall-clock risk; raise if venues overflow
-      system: systemPrompt(source, venueName),
-      messages: [{ role: 'user', content: `VENUE PAGE (${source.url}):\n\n${payload}` }],
-    }),
+): Promise<ExtractSummary> {
+  const t0 = Date.now();
+  const summary: ExtractSummary = {
+    phase: 'extract', venue: venueName, fetched_bytes: 0, chunks: 0,
+    events_extracted: 0, events_upserted: 0, backfilled: 0, duplicates: 0,
+    dropped_invalid: 0, errors: [], samples: [], elapsed_ms: 0,
+  };
+
+  const pageRes = await fetch(source.url, {
+    headers: { 'user-agent': 'Mozilla/5.0 (ajmo parser)' },
+    signal: AbortSignal.timeout(20_000),
   });
-  if (!res.ok) throw new Error(`Anthropic ${res.status}: ${(await res.text()).slice(0, 300)}`);
-  const data = await res.json();
-  const text = (data.content ?? [])
-    .filter((b: { type: string }) => b.type === 'text')
-    .map((b: { text: string }) => b.text)
-    .join('');
-  if (data.stop_reason === 'max_tokens') throw new Error('extraction truncated at max_tokens');
-  return parseEventsJson(text);
+  if (!pageRes.ok) throw new Error(`fetch ${source.url} → ${pageRes.status}`);
+  const html = await pageRes.text();
+  summary.fetched_bytes = html.length;
+
+  // Payloads: telegram in chunks of 5 posts, HTML as one capped blob.
+  const payloads =
+    source.kind === 'telegram'
+      ? (() => {
+          const posts = telegramPosts(html, source.handle);
+          const chunks: string[] = [];
+          for (let i = 0; i < posts.length; i += TELEGRAM_CHUNK) {
+            chunks.push(posts.slice(i, i + TELEGRAM_CHUNK).join('\n\n---\n\n'));
+          }
+          return chunks;
+        })()
+      : [cleanHtml(html, new URL(source.url).origin).slice(0, MAX_PAYLOAD_CHARS)];
+  if (!payloads.length || !payloads[0]) throw new Error('empty payload after cleaning');
+
+  // Existing rows for 23505-backfill matching (few rows; matched in JS).
+  const { data: existingRows } = await admin
+    .from('events')
+    .select('id, title, starts_at, covers, source_url')
+    .eq('venue_id', source.venue_id);
+  const existing = (existingRows ?? []) as ExistingRow[];
+
+  const now = Date.now();
+  const horizon = now + MAX_MONTHS_AHEAD * 30 * 24 * 3600 * 1000;
+  const seen = new Set<string>();
+  const system = extractPrompt(source, venueName);
+  // Chunk timeouts must sum under the 150s wall clock even in the worst case.
+  const perCallTimeout = payloads.length > 1 ? 60_000 : 125_000;
+
+  for (const payload of payloads) {
+    summary.chunks += 1;
+    let extracted: ExtractedEvent[];
+    try {
+      extracted = await claudeJsonArray<ExtractedEvent>(
+        apiKey, EXTRACT_MODEL, system,
+        `VENUE PAGE (${source.url}):\n\n${payload}`, 4096, perCallTimeout,
+      );
+    } catch (e) {
+      // A failed chunk must not lose the other chunk's events.
+      summary.errors.push(`chunk ${summary.chunks}: ${e instanceof Error ? e.message : String(e)}`);
+      continue;
+    }
+    summary.events_extracted += extracted.length;
+
+    for (const ev of extracted) {
+      const startsAt = ev.title?.trim() ? belgradeToInstant(ev.date_start ?? '') : null;
+      const endsAt = ev.date_end ? belgradeToInstant(ev.date_end) : null;
+      // Keep ongoing ranges (exhibitions): drop only when the whole event is past.
+      const lastMoment = endsAt ?? startsAt;
+      if (!startsAt || Date.parse(lastMoment!) < now || Date.parse(startsAt) > horizon) {
+        summary.dropped_invalid += 1;
+        continue;
+      }
+      const key = `${ev.title.trim().toLowerCase()}|${startsAt}`;
+      if (seen.has(key)) {
+        summary.duplicates += 1;
+        continue;
+      }
+      seen.add(key);
+
+      const { error: insErr } = await admin.from('events').insert({
+        city_id: source.city_id,
+        venue_id: source.venue_id,
+        title: ev.title.trim(),
+        description: ev.description || null,
+        category: CATEGORIES.has(ev.category ?? '') ? ev.category : 'other',
+        starts_at: startsAt,
+        ends_at: endsAt,
+        price_text: ev.price_min_rsd != null ? `od ${ev.price_min_rsd} RSD` : null,
+        is_free: ev.is_free ?? false,
+        covers: ev.image_url ? [ev.image_url] : null, // raw URL; phase `covers` re-hosts
+        source_type: source.kind === 'telegram' ? 'telegram' : 'website',
+        source_url: ev.event_url ?? source.url,
+        status: 'published',
+      });
+
+      if (insErr) {
+        if (insErr.code !== '23505') {
+          summary.errors.push(`insert ${ev.title}: ${insErr.message}`);
+          continue;
+        }
+        // Dedup hit — backfill cover/detail-url the existing row is missing.
+        summary.duplicates += 1;
+        const match = existing.find(
+          (r) =>
+            r.title.toLowerCase() === ev.title.trim().toLowerCase() &&
+            Date.parse(r.starts_at) === Date.parse(startsAt),
+        );
+        const patch: Record<string, unknown> = {};
+        if (match && !match.covers?.length && ev.image_url) patch.covers = [ev.image_url];
+        if (match && ev.event_url && (match.source_url === source.url || !match.source_url)) {
+          patch.source_url = ev.event_url;
+        }
+        if (match && Object.keys(patch).length) {
+          await admin.from('events').update(patch).eq('id', match.id);
+          summary.backfilled += 1;
+        }
+        continue;
+      }
+
+      summary.events_upserted += 1;
+      if (summary.samples.length < 5) {
+        summary.samples.push({
+          title: ev.title,
+          starts_at_belgrade: ev.date_start,
+          price_min_rsd: ev.price_min_rsd,
+          category: ev.category,
+          event_url: ev.event_url,
+          image_url: ev.image_url,
+        });
+      }
+    }
+  }
+
+  await admin.from('sources').update({ last_run_at: new Date().toISOString() }).eq('id', source.id);
+  summary.elapsed_ms = Date.now() - t0;
+  return summary;
 }
 
-// ── Cover re-hosting (Telegram CDN URLs expire; same bucket as parse-dcloza) ─
-const STORAGE_BUCKET = 'event-covers';
+// ── Phase: translate ─────────────────────────────────────────────────────────
+// Same i18n rules as parse-dcloza so the catalog stays consistent.
+const TRANSLATE_PROMPT = `You translate event listings for a Belgrade events app into English (en), Russian (ru) and Serbian (sr, Latin script).
 
+Input: a JSON array of {id, title, description} in their source language.
+Respond with ONLY a JSON array — no prose, no markdown fences:
+[{ "id": string, "title_i18n": {"en": string, "ru": string, "sr": string}, "description_i18n": {"en": string, "ru": string, "sr": string} | null }]
+
+TITLE rules (identical to the rest of the catalog):
+- Translate the title ONLY when it is a DESCRIPTIVE phrase (e.g. RU "Вечер настольных игр" → EN "Board games night", SR "Veče društvenih igara"; SR "Izložba: X" → EN "Exhibition: X", RU "Выставка: X"). Otherwise keep it verbatim and IDENTICAL across en/ru/sr:
+  • PROPER NOUN (band, artist, brand, show, project name): keep EXACTLY the same in all three, even in Cyrillic; do NOT translate or transliterate ("Психея" stays "Психея" everywhere).
+  • LATIN-SCRIPT title (e.g. "French Speaking Club", "Nazareth"): keep EXACTLY as-is and IDENTICAL in all three.
+  For mixed titles, translate the descriptive parts and keep proper-noun / Latin-script parts verbatim.
+- DESCRIPTION: when the input description is non-null, ALWAYS provide all three languages — translate into the missing ones, concise (one sentence). When the input description is null, return description_i18n: null.
+- Escape any double quotes inside JSON string values.`;
+
+interface PendingTranslation {
+  id: string;
+  title: string;
+  description: string | null;
+}
+
+interface TranslationResult {
+  id: string;
+  title_i18n: Record<string, string>;
+  description_i18n: Record<string, string> | null;
+}
+
+interface TranslateSummary {
+  phase: 'translate';
+  venue: string;
+  pending: number;
+  translated: number;
+  errors: string[];
+  elapsed_ms: number;
+}
+
+async function phaseTranslate(
+  admin: Admin,
+  source: Source,
+  venueName: string,
+  apiKey: string,
+): Promise<TranslateSummary> {
+  const t0 = Date.now();
+  const summary: TranslateSummary = {
+    phase: 'translate', venue: venueName, pending: 0, translated: 0, errors: [], elapsed_ms: 0,
+  };
+
+  const { data: rows, error } = await admin
+    .from('events')
+    .select('id, title, description')
+    .eq('venue_id', source.venue_id)
+    .in('source_type', ['website', 'telegram'])
+    .is('source_ref', null) // parse-venue rows only (dcloza fills its own i18n)
+    .is('title_i18n', null);
+  if (error) throw new Error(error.message);
+  const pending = (rows ?? []) as PendingTranslation[];
+  summary.pending = pending.length;
+
+  for (let i = 0; i < pending.length; i += TRANSLATE_BATCH) {
+    if (Date.now() - t0 > PHASE_TIME_BUDGET_MS) {
+      summary.errors.push(`time budget hit after ${summary.translated}/${pending.length}; re-run to resume`);
+      break;
+    }
+    const batch = pending.slice(i, i + TRANSLATE_BATCH);
+    let results: TranslationResult[];
+    try {
+      results = await claudeJsonArray<TranslationResult>(
+        apiKey, TRANSLATE_MODEL, TRANSLATE_PROMPT, JSON.stringify(batch), 8192, 90_000,
+      );
+    } catch (e) {
+      summary.errors.push(`batch ${i / TRANSLATE_BATCH + 1}: ${e instanceof Error ? e.message : String(e)}`);
+      continue;
+    }
+    for (const r of results) {
+      if (!r?.id || !r.title_i18n?.en || !r.title_i18n?.ru || !r.title_i18n?.sr) continue;
+      const { error: updErr } = await admin
+        .from('events')
+        .update({ title_i18n: r.title_i18n, description_i18n: r.description_i18n ?? null })
+        .eq('id', r.id)
+        .eq('venue_id', source.venue_id); // never cross venues even on a hallucinated id
+      if (updErr) summary.errors.push(`update ${r.id}: ${updErr.message}`);
+      else summary.translated += 1;
+    }
+  }
+
+  summary.elapsed_ms = Date.now() - t0;
+  return summary;
+}
+
+// ── Phase: covers ────────────────────────────────────────────────────────────
+interface CoverRow {
+  id: string;
+  covers: string[] | null;
+  source_url: string | null;
+}
+
+interface CoversSummary {
+  phase: 'covers';
+  venue: string;
+  pending: number;
+  resolved_inline: number;
+  resolved_detail_page: number;
+  unresolved: number;
+  errors: string[];
+  elapsed_ms: number;
+}
+
+/** Download (10s timeout, one retry) and upload into the bucket; public URL back. */
 async function rehostCover(admin: Admin, key: string, sourceUrl: string): Promise<string> {
-  // Telegram's CDN sometimes hangs from AWS IPs — a stuck fetch killed whole
-  // runs (WORKER_RESOURCE_LIMIT). Bound it; on timeout the event keeps a null cover.
-  const imgRes = await fetch(sourceUrl, { signal: AbortSignal.timeout(10_000) });
-  if (!imgRes.ok) throw new Error(`cover download ${imgRes.status}`);
+  let imgRes: Response | null = null;
+  for (let attempt = 0; attempt < 2 && !imgRes?.ok; attempt++) {
+    try {
+      imgRes = await fetch(sourceUrl, { signal: AbortSignal.timeout(10_000) });
+    } catch {
+      imgRes = null; // timeout/network — retry once
+    }
+  }
+  if (!imgRes?.ok) throw new Error(`cover download failed: ${sourceUrl.slice(0, 120)}`);
   const bytes = new Uint8Array(await imgRes.arrayBuffer());
   const { error } = await admin.storage.from(STORAGE_BUCKET).upload(key, bytes, {
     contentType: imgRes.headers.get('content-type') ?? 'image/jpeg',
@@ -240,130 +582,73 @@ async function rehostCover(admin: Admin, key: string, sourceUrl: string): Promis
   return admin.storage.from(STORAGE_BUCKET).getPublicUrl(key).data.publicUrl;
 }
 
-// ── Per-venue pipeline ───────────────────────────────────────────────────────
-async function parseVenue(admin: Admin, source: Source, anthropicKey: string): Promise<VenueSummary> {
-  const { data: venue } = await admin
-    .from('venues')
-    .select('name')
-    .eq('id', source.venue_id)
-    .single();
-  const summary: VenueSummary = {
-    venue: venue?.name ?? source.handle,
-    handle: source.handle,
-    kind: source.kind,
-    fetched_bytes: 0,
-    payload_chars: 0,
-    events_extracted: 0,
-    events_upserted: 0,
-    duplicates: 0,
-    dropped_invalid: 0,
-    errors: [],
-    samples: [],
+function ogImage(html: string): string | null {
+  const m =
+    html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ??
+    html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i) ??
+    html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i);
+  return m ? m[1].replace(/&amp;/g, '&') : null;
+}
+
+async function phaseCovers(admin: Admin, source: Source, venueName: string): Promise<CoversSummary> {
+  const t0 = Date.now();
+  const summary: CoversSummary = {
+    phase: 'covers', venue: venueName, pending: 0,
+    resolved_inline: 0, resolved_detail_page: 0, unresolved: 0, errors: [], elapsed_ms: 0,
   };
 
-  // 1. Fetch.
-  const pageRes = await fetch(source.url, {
-    headers: { 'user-agent': 'Mozilla/5.0 (ajmo parser)' },
-    signal: AbortSignal.timeout(20_000),
-  });
-  if (!pageRes.ok) throw new Error(`fetch ${source.url} → ${pageRes.status}`);
-  const html = await pageRes.text();
-  summary.fetched_bytes = html.length;
+  const { data: rows, error } = await admin
+    .from('events')
+    .select('id, covers, source_url')
+    .eq('venue_id', source.venue_id)
+    .in('source_type', ['website', 'telegram'])
+    .is('source_ref', null);
+  if (error) throw new Error(error.message);
 
-  // 2. Pre-clean into an LLM payload, capped at 50k chars (truncate the tail).
-  let payload = source.kind === 'telegram' ? telegramPayload(html, source.handle) : cleanHtml(html);
-  payload = payload.slice(0, MAX_PAYLOAD_CHARS);
-  summary.payload_chars = payload.length;
-  if (!payload) throw new Error('empty payload after cleaning');
+  const needy = ((rows ?? []) as CoverRow[]).filter(
+    (r) => !r.covers?.[0]?.includes(PUBLIC_OBJECT_MARKER),
+  );
+  summary.pending = needy.length;
 
-  // 3. Extract (one Claude call per venue page).
-  const extracted = await extractEvents(source, summary.venue, payload, anthropicKey);
-  summary.events_extracted = extracted.length;
-
-  // 4. Validate + 5. Insert with dedup.
-  const now = Date.now();
-  const horizon = now + MAX_MONTHS_AHEAD * 30 * 24 * 3600 * 1000;
-  const seen = new Set<string>(); // intra-run dedup; DB index guards across runs
-  for (const ev of extracted) {
-    const startsAt = ev.title?.trim() ? belgradeToInstant(ev.date_start ?? '') : null;
-    const endsAt = ev.date_end ? belgradeToInstant(ev.date_end) : null;
-    // Keep ongoing ranges (exhibitions): drop only when the whole event is past.
-    const lastMoment = endsAt ?? startsAt;
-    if (!startsAt || Date.parse(lastMoment!) < now || Date.parse(startsAt) > horizon) {
-      summary.dropped_invalid += 1;
-      continue;
+  for (const row of needy) {
+    if (Date.now() - t0 > PHASE_TIME_BUDGET_MS) {
+      summary.errors.push(`time budget hit with ${summary.pending - summary.resolved_inline - summary.resolved_detail_page - summary.unresolved} left; re-run to resume`);
+      break;
     }
-    const key = `${ev.title.trim().toLowerCase()}|${startsAt}`;
-    if (seen.has(key)) {
-      summary.duplicates += 1;
-      continue;
-    }
-    seen.add(key);
-
-    // Telegram covers live on an expiring CDN — re-host into our bucket.
-    let coverUrl = ev.image_url ?? null;
-    if (coverUrl && source.kind === 'telegram') {
-      try {
-        const msgId = ev.event_url?.match(/\/(\d+)$/)?.[1] ?? `${Date.parse(startsAt)}`;
-        coverUrl = await rehostCover(admin, `${source.handle}/${msgId}.jpg`, coverUrl);
-      } catch (e) {
-        summary.errors.push(`cover ${ev.title}: ${e instanceof Error ? e.message : String(e)}`);
-        coverUrl = null;
+    try {
+      let candidate = row.covers?.[0] ?? null;
+      let via: 'inline' | 'detail' = 'inline';
+      // No inline URL → try og:image on the event's own page (never the shared
+      // venue calendar page — its og:image would stamp one poster on everything).
+      if (!candidate && row.source_url && row.source_url !== source.url) {
+        const pageRes = await fetch(row.source_url, {
+          headers: { 'user-agent': 'Mozilla/5.0 (ajmo parser)' },
+          signal: AbortSignal.timeout(10_000),
+        });
+        if (pageRes.ok) candidate = ogImage(await pageRes.text());
+        via = 'detail';
       }
-    }
-
-    const { error: insErr } = await admin.from('events').insert({
-      city_id: source.city_id,
-      venue_id: source.venue_id,
-      title: ev.title.trim(),
-      description: ev.description || null,
-      category: CATEGORIES.has(ev.category ?? '') ? ev.category : 'other',
-      starts_at: startsAt,
-      ends_at: endsAt,
-      price_text: ev.price_min_rsd != null ? `od ${ev.price_min_rsd} RSD` : null,
-      is_free: ev.is_free ?? false,
-      covers: coverUrl ? [coverUrl] : null,
-      source_type: source.kind === 'telegram' ? 'telegram' : 'website',
-      source_url: ev.event_url ?? source.url,
-      status: 'published',
-    });
-    if (insErr) {
-      if (insErr.code === '23505') {
-        summary.duplicates += 1; // events_dedup_idx: already ingested on a prior run
+      if (!candidate) {
+        summary.unresolved += 1; // client falls back to the venue photo
         continue;
       }
-      summary.errors.push(`insert ${ev.title}: ${insErr.message}`);
-      continue;
-    }
-    summary.events_upserted += 1;
-    if (summary.samples.length < 5) {
-      summary.samples.push({
-        title: ev.title,
-        starts_at_belgrade: ev.date_start,
-        ends_at_belgrade: ev.date_end,
-        price_min_rsd: ev.price_min_rsd,
-        is_free: ev.is_free,
-        category: ev.category,
-        event_url: ev.event_url,
-        cover: coverUrl,
-      });
+      const url = await rehostCover(admin, `${source.handle}/${row.id}.jpg`, candidate);
+      await admin.from('events').update({ covers: [url] }).eq('id', row.id);
+      if (via === 'inline') summary.resolved_inline += 1;
+      else summary.resolved_detail_page += 1;
+    } catch (e) {
+      summary.unresolved += 1;
+      summary.errors.push(`${row.id}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
 
-  await admin.from('sources').update({ last_run_at: new Date().toISOString() }).eq('id', source.id);
-  await admin.from('ingest_runs').insert({
-    source_handle: source.handle,
-    found: summary.events_extracted,
-    inserted: summary.events_upserted,
-    skipped_nonevents: summary.dropped_invalid,
-    errors: summary.errors.length,
-    error_detail: summary.errors.length ? summary.errors.join(' | ') : null,
-    finished_at: new Date().toISOString(),
-  });
+  summary.elapsed_ms = Date.now() - t0;
   return summary;
 }
 
 // ── Handler ──────────────────────────────────────────────────────────────────
+type Phase = 'extract' | 'translate' | 'covers';
+
 Deno.serve(async (req) => {
   const admin = createClient(
     Deno.env.get('SUPABASE_URL')!,
@@ -375,42 +660,64 @@ Deno.serve(async (req) => {
   }
 
   const body = await req.json().catch(() => ({}));
-  const venueId = body?.venue_id ?? new URL(req.url).searchParams.get('venue_id');
+  const params = new URL(req.url).searchParams;
+  const venueId = body?.venue_id ?? params.get('venue_id');
+  const phase = (body?.phase ?? params.get('phase') ?? 'extract') as Phase;
+  if (!venueId) {
+    return Response.json({ ok: false, error: 'venue_id is required (per-venue invocation only)' }, { status: 400 });
+  }
+  if (!['extract', 'translate', 'covers'].includes(phase)) {
+    return Response.json({ ok: false, error: `unknown phase '${phase}'` }, { status: 400 });
+  }
 
-  let query = admin
+  const { data: source, error: srcErr } = await admin
     .from('sources')
-    .select('id, kind, handle, url, city_id, venue_id, enabled')
+    .select('id, kind, handle, url, city_id, venue_id')
+    .eq('venue_id', venueId)
     .eq('enabled', true)
-    .neq('handle', 'dcloza') // dcloza keeps its own function
-    .in('kind', ['telegram', 'official', 'tickets']); // no instagram
-  if (venueId) query = query.eq('venue_id', venueId);
-
-  const { data: sources, error: srcErr } = await query;
+    .neq('handle', 'dcloza')
+    .in('kind', ['telegram', 'official', 'tickets'])
+    .maybeSingle();
   if (srcErr) return Response.json({ ok: false, error: srcErr.message }, { status: 500 });
-  if (!sources?.length) {
-    return Response.json({ ok: false, error: `no enabled sources${venueId ? ` for venue ${venueId}` : ''}` }, { status: 404 });
+  if (!source) {
+    return Response.json({ ok: false, error: `no enabled source for venue ${venueId}` }, { status: 404 });
   }
+  const src = source as Source;
+  const { data: venue } = await admin.from('venues').select('name').eq('id', src.venue_id).single();
+  const venueName = (venue?.name as string) ?? src.handle;
 
-  // One broken venue must not kill the batch.
-  const results: VenueSummary[] = [];
-  for (const source of sources as Source[]) {
-    try {
-      results.push(await parseVenue(admin, source, anthropicKey));
-    } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      results.push({
-        venue: source.handle, handle: source.handle, kind: source.kind,
-        fetched_bytes: 0, payload_chars: 0, events_extracted: 0, events_upserted: 0,
-        duplicates: 0, dropped_invalid: 0, errors: [message], samples: [],
-      });
-      await admin.from('ingest_runs').insert({
-        source_handle: source.handle,
-        errors: 1,
-        error_detail: message,
-        finished_at: new Date().toISOString(),
-      });
-    }
+  try {
+    const summary =
+      phase === 'extract'
+        ? await phaseExtract(admin, src, venueName, anthropicKey)
+        : phase === 'translate'
+          ? await phaseTranslate(admin, src, venueName, anthropicKey)
+          : await phaseCovers(admin, src, venueName);
+
+    await admin.from('ingest_runs').insert({
+      source_handle: phase === 'extract' ? src.handle : `${src.handle}:${phase}`,
+      found:
+        summary.phase === 'extract' ? summary.events_extracted : summary.pending,
+      inserted:
+        summary.phase === 'extract'
+          ? summary.events_upserted
+          : summary.phase === 'translate'
+            ? summary.translated
+            : summary.resolved_inline + summary.resolved_detail_page,
+      errors: summary.errors.length,
+      error_detail: summary.errors.length ? summary.errors.join(' | ') : null,
+      finished_at: new Date().toISOString(),
+    });
+
+    return Response.json({ ok: summary.errors.length === 0, ...summary });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    await admin.from('ingest_runs').insert({
+      source_handle: `${src.handle}:${phase}`,
+      errors: 1,
+      error_detail: message,
+      finished_at: new Date().toISOString(),
+    });
+    return Response.json({ ok: false, phase, venue: venueName, error: message }, { status: 500 });
   }
-
-  return Response.json({ ok: results.every((r) => r.errors.length === 0), venues: results });
 });
