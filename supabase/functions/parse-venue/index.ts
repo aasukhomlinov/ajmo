@@ -21,6 +21,7 @@
 // dedup key on re-parses; the app reads title_i18n with a scalar fallback.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
+import { jsonrepair } from 'npm:jsonrepair@3';
 
 const TZ = 'Europe/Belgrade';
 const EXTRACT_MODEL = 'claude-sonnet-4-6';
@@ -184,74 +185,79 @@ async function claudeCall(
 }
 
 /**
- * Escape unescaped `"` inside string values. sonnet-4-6 (no sampling params)
- * deterministically emits ASCII quotes in its own prose ("band name" etc.)
- * despite instructions — a retry reproduces the same bytes, so repair locally.
- * Heuristic: a quote inside a string closes it only when the next non-space
- * char is structural (, } ] :); anything else is content → escape it.
+ * Parse an LLM response into a JSON array: native JSON.parse first (fast path),
+ * then a jsonrepair pass (sonnet-4-6 deterministically emits unescaped inner
+ * quotes in its own prose — retries reproduce the same bytes, so repair, don't
+ * re-ask). `via` reports which path succeeded so the caller can log telemetry.
+ * Throws when the text has no [...] block or repair still doesn't yield an
+ * array — the caller must fail loud, never drop the batch silently.
  */
-function escapeInnerQuotes(json: string): string {
-  let out = '';
-  let inString = false;
-  for (let i = 0; i < json.length; i++) {
-    const c = json[i];
-    if (!inString) {
-      if (c === '"') inString = true;
-      out += c;
-      continue;
-    }
-    if (c === '\\') {
-      out += c + (json[i + 1] ?? '');
-      i++;
-      continue;
-    }
-    if (c === '"') {
-      let j = i + 1;
-      while (j < json.length && /\s/.test(json[j])) j++;
-      const next = json[j];
-      if (next === ',' || next === '}' || next === ']' || next === ':' || j >= json.length) {
-        inString = false;
-        out += c;
-      } else {
-        out += '\\"';
-      }
-      continue;
-    }
-    out += c;
-  }
-  return out;
-}
-
-function parseJsonArray<T>(text: string): T[] {
-  const start = text.indexOf('[');
-  const end = text.lastIndexOf(']');
-  if (start === -1 || end <= start) throw new Error(`no JSON array in response: ${text.slice(0, 200)}`);
-  const slice = text.slice(start, end + 1);
-  let parsed: unknown;
+function parseWithRepair<T>(raw: string): { data: T[]; via: 'native' | 'repair' } {
+  const start = raw.indexOf('[');
+  const end = raw.lastIndexOf(']');
+  if (start === -1 || end <= start) throw new Error('no JSON array in response');
+  const slice = raw.slice(start, end + 1);
   try {
-    parsed = JSON.parse(slice);
+    const parsed = JSON.parse(slice);
+    if (!Array.isArray(parsed)) throw new Error('not an array');
+    return { data: parsed as T[], via: 'native' };
   } catch {
-    parsed = JSON.parse(escapeInnerQuotes(slice)); // repair pass for inner quotes
+    const parsed = JSON.parse(jsonrepair(slice)); // throws JSONRepairError on hopeless input
+    if (!Array.isArray(parsed)) throw new Error('repaired JSON is not an array');
+    return { data: parsed as T[], via: 'repair' };
   }
-  if (!Array.isArray(parsed)) throw new Error('response JSON is not an array');
-  return parsed as T[];
 }
 
+/** Truncated raw-output snippet for post-mortem (first ~1k + last ~1k chars). */
+function rawSnippet(raw: string): string {
+  return raw.length > 2100 ? `${raw.slice(0, 1000)}\n…[truncated]…\n${raw.slice(-1000)}` : raw;
+}
+
+async function logIngestError(
+  admin: Admin,
+  venueId: string,
+  phase: string,
+  kind: 'repair_needed' | 'unparseable',
+  message: string,
+  raw: string,
+): Promise<void> {
+  await admin.from('ingest_errors').insert({
+    venue_id: venueId,
+    phase,
+    error_kind: kind,
+    error_message: message,
+    raw_output: rawSnippet(raw),
+  });
+}
+
+/**
+ * One LLM call → parsed array, with parse telemetry. On 'repair_needed' the
+ * batch still succeeds (info row); on 'unparseable' this THROWS after logging —
+ * callers surface it in the phase summary so the run is never falsely green.
+ */
 async function claudeJsonArray<T>(
+  admin: Admin,
+  venueId: string,
+  phase: string,
   apiKey: string,
   model: string,
   system: string,
   user: string,
   maxTokens: number,
   timeoutMs: number,
-): Promise<T[]> {
-  const text = await claudeCall(apiKey, model, system, user, maxTokens, timeoutMs);
+  rawOverride?: string, // test hook: parse this instead of calling the API
+): Promise<{ data: T[]; via: 'native' | 'repair' }> {
+  const raw = rawOverride ?? (await claudeCall(apiKey, model, system, user, maxTokens, timeoutMs));
   try {
-    return parseJsonArray<T>(text);
-  } catch {
-    // Malformed JSON (unescaped quote etc.) — one fresh attempt. HTTP errors
-    // and timeouts above are NOT retried; only cheap-to-fix garbage output is.
-    return parseJsonArray<T>(await claudeCall(apiKey, model, system, user, maxTokens, timeoutMs));
+    const result = parseWithRepair<T>(raw);
+    if (result.via === 'repair') {
+      await logIngestError(admin, venueId, phase, 'repair_needed', 'parsed only after jsonrepair', raw);
+    }
+    return result;
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    await logIngestError(admin, venueId, phase, 'unparseable', message, raw);
+    throw new Error(`unparseable LLM output (logged to ingest_errors): ${message}`);
   }
 }
 
@@ -305,6 +311,7 @@ interface ExtractSummary {
   venue: string;
   fetched_bytes: number;
   chunks: number;
+  parsed_via: ('native' | 'repair')[];
   events_extracted: number;
   events_upserted: number;
   backfilled: number;
@@ -320,25 +327,33 @@ async function phaseExtract(
   source: Source,
   venueName: string,
   apiKey: string,
+  testRaw?: string,
 ): Promise<ExtractSummary> {
   const t0 = Date.now();
   const summary: ExtractSummary = {
     phase: 'extract', venue: venueName, fetched_bytes: 0, chunks: 0,
-    events_extracted: 0, events_upserted: 0, backfilled: 0, duplicates: 0,
-    dropped_invalid: 0, errors: [], samples: [], elapsed_ms: 0,
+    parsed_via: [], events_extracted: 0, events_upserted: 0, backfilled: 0,
+    duplicates: 0, dropped_invalid: 0, errors: [], samples: [], elapsed_ms: 0,
   };
 
-  const pageRes = await fetch(source.url, {
-    headers: { 'user-agent': 'Mozilla/5.0 (ajmo parser)' },
-    signal: AbortSignal.timeout(20_000),
-  });
-  if (!pageRes.ok) throw new Error(`fetch ${source.url} → ${pageRes.status}`);
-  const html = await pageRes.text();
-  summary.fetched_bytes = html.length;
+  // Test hook: with `testRaw` set, skip fetch + Claude and parse `testRaw` as
+  // the LLM output for one synthetic chunk — exercises the repair/unparseable
+  // path end-to-end incl. ingest_errors + non-green summary.
+  let html = '';
+  if (!testRaw) {
+    const pageRes = await fetch(source.url, {
+      headers: { 'user-agent': 'Mozilla/5.0 (ajmo parser)' },
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!pageRes.ok) throw new Error(`fetch ${source.url} → ${pageRes.status}`);
+    html = await pageRes.text();
+    summary.fetched_bytes = html.length;
+  }
 
   // Payloads: telegram in chunks of 5 posts, HTML as one capped blob.
-  const payloads =
-    source.kind === 'telegram'
+  const payloads = testRaw
+    ? ['test hook']
+    : source.kind === 'telegram'
       ? (() => {
           const posts = telegramPosts(html, source.handle);
           const chunks: string[] = [];
@@ -361,19 +376,33 @@ async function phaseExtract(
   const horizon = now + MAX_MONTHS_AHEAD * 30 * 24 * 3600 * 1000;
   const seen = new Set<string>();
   const system = extractPrompt(source, venueName);
-  // Chunk timeouts must sum under the 150s wall clock even in the worst case.
-  const perCallTimeout = payloads.length > 1 ? 60_000 : 125_000;
+  // Per-chunk timeout = min(90s, remaining wall-clock budget). RU chunks
+  // measure 25-72s depending on content and API load; a fixed cap either
+  // wastes budget or kills healthy calls. A chunk that can't start within
+  // the budget is reported and picked up by a re-run (inserts are per-chunk,
+  // so nothing already extracted is lost).
+  const deadline = t0 + 140_000; // leave ~10s of the 150s wall clock for inserts
 
   for (const payload of payloads) {
     summary.chunks += 1;
+    const timeoutMs = Math.min(payloads.length > 1 ? 90_000 : 125_000, deadline - Date.now());
+    if (timeoutMs < 10_000) {
+      summary.errors.push(`chunk ${summary.chunks}: skipped, out of time budget; re-run to resume`);
+      continue;
+    }
     let extracted: ExtractedEvent[];
     try {
-      extracted = await claudeJsonArray<ExtractedEvent>(
+      const result = await claudeJsonArray<ExtractedEvent>(
+        admin, source.venue_id, 'extract',
         apiKey, EXTRACT_MODEL, system,
-        `VENUE PAGE (${source.url}):\n\n${payload}`, 4096, perCallTimeout,
+        `VENUE PAGE (${source.url}):\n\n${payload}`, 4096, timeoutMs,
+        testRaw,
       );
+      extracted = result.data;
+      summary.parsed_via.push(result.via);
     } catch (e) {
-      // A failed chunk must not lose the other chunk's events.
+      // A failed chunk must not lose the other chunk's events — but the run
+      // goes non-green and the raw output is already in ingest_errors.
       summary.errors.push(`chunk ${summary.chunks}: ${e instanceof Error ? e.message : String(e)}`);
       continue;
     }
@@ -487,6 +516,7 @@ interface TranslateSummary {
   venue: string;
   pending: number;
   translated: number;
+  parsed_via: ('native' | 'repair')[];
   errors: string[];
   elapsed_ms: number;
 }
@@ -499,7 +529,8 @@ async function phaseTranslate(
 ): Promise<TranslateSummary> {
   const t0 = Date.now();
   const summary: TranslateSummary = {
-    phase: 'translate', venue: venueName, pending: 0, translated: 0, errors: [], elapsed_ms: 0,
+    phase: 'translate', venue: venueName, pending: 0, translated: 0,
+    parsed_via: [], errors: [], elapsed_ms: 0,
   };
 
   const { data: rows, error } = await admin
@@ -521,9 +552,12 @@ async function phaseTranslate(
     const batch = pending.slice(i, i + TRANSLATE_BATCH);
     let results: TranslationResult[];
     try {
-      results = await claudeJsonArray<TranslationResult>(
+      const result = await claudeJsonArray<TranslationResult>(
+        admin, source.venue_id, 'translate',
         apiKey, TRANSLATE_MODEL, TRANSLATE_PROMPT, JSON.stringify(batch), 8192, 90_000,
       );
+      results = result.data;
+      summary.parsed_via.push(result.via);
     } catch (e) {
       summary.errors.push(`batch ${i / TRANSLATE_BATCH + 1}: ${e instanceof Error ? e.message : String(e)}`);
       continue;
@@ -686,10 +720,14 @@ Deno.serve(async (req) => {
   const { data: venue } = await admin.from('venues').select('name').eq('id', src.venue_id).single();
   const venueName = (venue?.name as string) ?? src.handle;
 
+  // Test hook (extract only): `_test_raw` in the body is parsed as the LLM
+  // output instead of fetching/calling Claude — verifies the fail-loud path.
+  const testRaw = typeof body?._test_raw === 'string' ? body._test_raw : undefined;
+
   try {
     const summary =
       phase === 'extract'
-        ? await phaseExtract(admin, src, venueName, anthropicKey)
+        ? await phaseExtract(admin, src, venueName, anthropicKey, testRaw)
         : phase === 'translate'
           ? await phaseTranslate(admin, src, venueName, anthropicKey)
           : await phaseCovers(admin, src, venueName);
