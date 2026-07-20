@@ -151,6 +151,15 @@ export const en = {
   'profile.account': 'Account',
   'profile.signOut': 'Sign out',
   'profile.signOutConfirm': 'You’ll need a new magic link to sign back in.',
+  'profile.deleteAccount': 'Delete account',
+  'profile.deleteAccountBody':
+    'This permanently deletes your account, your saved events and reminders, and your city preference. This cannot be undone.',
+  'profile.deleteAccountConfirmTitle': 'Delete everything?',
+  'profile.deleteAccountConfirmBody':
+    'Last check — your account and all your data will be gone for good.',
+  'profile.deleteAccountConfirmCta': 'Delete permanently',
+  'profile.deleteAccountFailed': 'Couldn’t delete your account. Nothing was removed — try again.',
+  'profile.deleteAccountDone': 'Your account and data have been deleted.',
   'profile.notifications': 'Notifications',
   'profile.pushNotifications': 'Push notifications',
   'profile.pushSystemOff': 'Off in system settings — tap to open settings',

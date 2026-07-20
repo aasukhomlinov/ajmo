@@ -1,8 +1,10 @@
+import { useState } from 'react';
 import { Alert, Linking, ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { APP_VERSION_LABEL } from '@/lib/appInfo';
 import { useT } from '@/lib/i18n';
+import { supabase } from '@/lib/supabase';
 import {
   ensureNotificationsPermission,
   useNotificationsGranted,
@@ -61,6 +63,52 @@ export function ProfileScreen({
     ]);
   };
 
+  // Account deletion (Meta App Review + /data-deletion promise). The server
+  // (delete-account edge function) derives the user from the JWT and cascades
+  // profile/saves/reminders off the auth user. Two explicit destructive
+  // confirms before anything happens; failure surfaces an alert with retry.
+  const [deleting, setDeleting] = useState(false);
+
+  const runDeleteAccount = async () => {
+    setDeleting(true);
+    const { error } = await supabase.functions.invoke('delete-account');
+    setDeleting(false);
+    if (error) {
+      Alert.alert(t('profile.deleteAccount'), t('profile.deleteAccountFailed'), [
+        { text: t('common.cancel'), style: 'cancel' },
+        { text: t('common.retry'), onPress: () => void runDeleteAccount() },
+      ]);
+      return;
+    }
+    // Server session is already gone; signOut falls back to local scope and
+    // flips the root gate to the auth flow. The native alert survives that.
+    Alert.alert(t('profile.deleteAccount'), t('profile.deleteAccountDone'));
+    await signOut();
+  };
+
+  const confirmDeleteAccount = () => {
+    Alert.alert(t('profile.deleteAccount'), t('profile.deleteAccountBody'), [
+      { text: t('common.cancel'), style: 'cancel' },
+      {
+        text: t('profile.deleteAccount'),
+        style: 'destructive',
+        onPress: () =>
+          Alert.alert(
+            t('profile.deleteAccountConfirmTitle'),
+            t('profile.deleteAccountConfirmBody'),
+            [
+              { text: t('common.cancel'), style: 'cancel' },
+              {
+                text: t('profile.deleteAccountConfirmCta'),
+                style: 'destructive',
+                onPress: () => void runDeleteAccount(),
+              },
+            ],
+          ),
+      },
+    ]);
+  };
+
   return (
     <SafeAreaView style={styles.safe} edges={['top']}>
       <Header title={t('profile.title')} variant="large" />
@@ -75,6 +123,17 @@ export function ProfileScreen({
             {email ? <ListRow label={email} /> : null}
             {email ? <Divider /> : null}
             <ListRow label={t('profile.signOut')} onPress={confirmSignOut} showChevron={false} />
+          </View>
+          {/* Destructive zone — its own card so it can't be fat-fingered from
+              the benign rows above. Deletion itself is double-confirmed. */}
+          <View style={styles.card}>
+            <ListRow
+              label={t('profile.deleteAccount')}
+              destructive
+              disabled={deleting}
+              onPress={confirmDeleteAccount}
+              showChevron={false}
+            />
           </View>
         </View>
 

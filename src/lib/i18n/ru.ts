@@ -135,6 +135,15 @@ export const ru: Record<TranslationKey, string> = {
   'profile.account': 'Аккаунт',
   'profile.signOut': 'Выйти',
   'profile.signOutConfirm': 'Чтобы войти снова, понадобится новая волшебная ссылка.',
+  'profile.deleteAccount': 'Удалить аккаунт',
+  'profile.deleteAccountBody':
+    'Аккаунт, сохранённые события, напоминания и выбранный город будут удалены навсегда. Это действие нельзя отменить.',
+  'profile.deleteAccountConfirmTitle': 'Удалить всё?',
+  'profile.deleteAccountConfirmBody':
+    'Последняя проверка — аккаунт и все данные будут удалены безвозвратно.',
+  'profile.deleteAccountConfirmCta': 'Удалить навсегда',
+  'profile.deleteAccountFailed': 'Не получилось удалить аккаунт. Ничего не удалено — попробуй ещё раз.',
+  'profile.deleteAccountDone': 'Аккаунт и данные удалены.',
   'profile.notifications': 'Уведомления',
   'profile.pushNotifications': 'Push-уведомления',
   'profile.pushSystemOff': 'Выключены в настройках системы — нажми, чтобы открыть',

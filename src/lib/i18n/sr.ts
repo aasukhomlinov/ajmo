@@ -134,6 +134,15 @@ export const sr: Record<TranslationKey, string> = {
   'profile.account': 'Nalog',
   'profile.signOut': 'Odjavi se',
   'profile.signOutConfirm': 'Za ponovnu prijavu trebaće ti novi magični link.',
+  'profile.deleteAccount': 'Obriši nalog',
+  'profile.deleteAccountBody':
+    'Ovim trajno brišeš nalog, sačuvane događaje i podsetnike, kao i izabrani grad. Ova radnja se ne može poništiti.',
+  'profile.deleteAccountConfirmTitle': 'Obrisati sve?',
+  'profile.deleteAccountConfirmBody':
+    'Poslednja provera — nalog i svi tvoji podaci biće trajno obrisani.',
+  'profile.deleteAccountConfirmCta': 'Obriši trajno',
+  'profile.deleteAccountFailed': 'Brisanje naloga nije uspelo. Ništa nije obrisano — pokušaj ponovo.',
+  'profile.deleteAccountDone': 'Nalog i podaci su obrisani.',
   'profile.notifications': 'Obaveštenja',
   'profile.pushNotifications': 'Push obaveštenja',
   'profile.pushSystemOff': 'Isključena u podešavanjima sistema — dodirni da ih otvoriš',

@@ -21,6 +21,8 @@ export interface ListRowProps {
   onPress?: () => void;
   /** Force the chevron on/off. Defaults to shown when `onPress` is set and no other trailing content exists. */
   showChevron?: boolean;
+  /** Render the label in the error color — destructive actions (delete, etc.). */
+  destructive?: boolean;
   disabled?: boolean;
   style?: StyleProp<ViewStyle>;
 }
@@ -33,6 +35,7 @@ export function ListRow({
   trailing,
   onPress,
   showChevron,
+  destructive = false,
   disabled = false,
   style,
 }: ListRowProps) {
@@ -41,7 +44,11 @@ export function ListRow({
     <CaretRight size={CHEVRON_SIZE} color={theme.colors.text.secondary} />
   ) : null;
 
-  const labelColor = disabled ? theme.colors.text.disabled : theme.colors.text.primary;
+  const labelColor = disabled
+    ? theme.colors.text.disabled
+    : destructive
+      ? theme.colors.error
+      : theme.colors.text.primary;
 
   const content = (
     <>
