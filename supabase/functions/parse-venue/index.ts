@@ -35,6 +35,9 @@ const TRANSLATE_BATCH = 10;
 const PHASE_TIME_BUDGET_MS = 100_000; // stop starting new work past this; re-run resumes
 const STORAGE_BUCKET = 'event-covers';
 const PUBLIC_OBJECT_MARKER = '/storage/v1/object/public/';
+// Realistic browser UA: several venue sites (domomladine.org) 403 bot-looking agents.
+const BROWSER_UA =
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
 
 type Admin = ReturnType<typeof createClient>;
 
@@ -95,6 +98,36 @@ function belgradeToInstant(local: string): string | null {
   return new Date(naiveUTC - offset * 60000).toISOString();
 }
 
+/**
+ * GET with a realistic UA and retry-with-backoff (network errors, 403/408/429/
+ * 5xx). Non-retryable statuses (404 …) fail immediately; a persistently
+ * blocked venue still THROWS so the run fails loud instead of silently
+ * dropping — the venue then shows up in ingest_runs.error_detail.
+ */
+async function fetchWithRetry(url: string, timeoutMs: number): Promise<Response> {
+  const delays = [0, 2000, 5000];
+  let last = '';
+  for (const delay of delays) {
+    if (delay) await new Promise((r) => setTimeout(r, delay));
+    try {
+      const res = await fetch(url, {
+        headers: {
+          'user-agent': BROWSER_UA,
+          accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+          'accept-language': 'sr,en;q=0.8',
+        },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (res.ok) return res;
+      last = `HTTP ${res.status}`;
+      if (![403, 408, 429, 500, 502, 503, 504].includes(res.status)) break;
+    } catch (e) {
+      last = e instanceof Error ? e.message : String(e);
+    }
+  }
+  throw new Error(`fetch ${url} → ${last} (after retries)`);
+}
+
 // ── HTML → text (links preserved so the LLM can emit event_url) ──────────────
 /** `origin` resolves root-relative hrefs (tickets.rs links events as /event/…). */
 function cleanHtml(html: string, origin = ''): string {
@@ -102,7 +135,9 @@ function cleanHtml(html: string, origin = ''): string {
     .replace(/<script[\s\S]*?<\/script>/gi, ' ')
     .replace(/<style[\s\S]*?<\/style>/gi, ' ')
     .replace(/<!--[\s\S]*?-->/g, ' ')
-    .replace(/<(nav|footer|header)[\s\S]*?<\/\1>/gi, ' ')
+    // Keep <header>: WP themes commonly render event hero-sliders inside it
+    // (drugstorebeograd.com); the prompt already ignores navigation noise.
+    .replace(/<(nav|footer)[\s\S]*?<\/\1>/gi, ' ')
     // Keep event detail-page links: <a href="U">T</a> → "T (U)".
     .replace(
       /<a\b[^>]*href="((?:https?:\/\/|\/)[^"]+)"[^>]*>([\s\S]*?)<\/a>/gi,
@@ -279,7 +314,7 @@ Return [] if the input has no resolvable upcoming events.`;
 
 function extractPrompt(source: Source, venueName: string): string {
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date());
-  return `You extract structured events from one venue's page as STRICT JSON (never prose). The venue is ALWAYS "${venueName}" (Belgrade); never extract other venues.
+  return `You extract structured events from one venue's page as STRICT JSON (never prose). The venue is ALWAYS "${venueName}" (Serbia); never extract other venues.
 
 ${EXTRACT_SPEC}
 
@@ -341,11 +376,7 @@ async function phaseExtract(
   // path end-to-end incl. ingest_errors + non-green summary.
   let html = '';
   if (!testRaw) {
-    const pageRes = await fetch(source.url, {
-      headers: { 'user-agent': 'Mozilla/5.0 (ajmo parser)' },
-      signal: AbortSignal.timeout(20_000),
-    });
-    if (!pageRes.ok) throw new Error(`fetch ${source.url} → ${pageRes.status}`);
+    const pageRes = await fetchWithRetry(source.url, 20_000);
     html = await pageRes.text();
     summary.fetched_bytes = html.length;
   }
@@ -596,17 +627,9 @@ interface CoversSummary {
   elapsed_ms: number;
 }
 
-/** Download (10s timeout, one retry) and upload into the bucket; public URL back. */
+/** Download (10s timeout, retry w/ backoff) and upload into the bucket; public URL back. */
 async function rehostCover(admin: Admin, key: string, sourceUrl: string): Promise<string> {
-  let imgRes: Response | null = null;
-  for (let attempt = 0; attempt < 2 && !imgRes?.ok; attempt++) {
-    try {
-      imgRes = await fetch(sourceUrl, { signal: AbortSignal.timeout(10_000) });
-    } catch {
-      imgRes = null; // timeout/network — retry once
-    }
-  }
-  if (!imgRes?.ok) throw new Error(`cover download failed: ${sourceUrl.slice(0, 120)}`);
+  const imgRes = await fetchWithRetry(sourceUrl, 10_000);
   const bytes = new Uint8Array(await imgRes.arrayBuffer());
   const { error } = await admin.storage.from(STORAGE_BUCKET).upload(key, bytes, {
     contentType: imgRes.headers.get('content-type') ?? 'image/jpeg',
@@ -620,7 +643,10 @@ function ogImage(html: string): string | null {
   const m =
     html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i) ??
     html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i) ??
-    html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i);
+    html.match(/<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i) ??
+    // No OG/twitter meta (e.g. SNP's ticketing pages) → first img that looks
+    // like an event poster by URL keyword; never generic logos/icons.
+    html.match(/<img[^>]+src=["']([^"']*(?:plakat|poster|repertoire|upload\/(?:event|slika))[^"']*)["']/i);
   return m ? m[1].replace(/&amp;/g, '&') : null;
 }
 
@@ -655,11 +681,8 @@ async function phaseCovers(admin: Admin, source: Source, venueName: string): Pro
       // No inline URL → try og:image on the event's own page (never the shared
       // venue calendar page — its og:image would stamp one poster on everything).
       if (!candidate && row.source_url && row.source_url !== source.url) {
-        const pageRes = await fetch(row.source_url, {
-          headers: { 'user-agent': 'Mozilla/5.0 (ajmo parser)' },
-          signal: AbortSignal.timeout(10_000),
-        });
-        if (pageRes.ok) candidate = ogImage(await pageRes.text());
+        candidate = ogImage(await (await fetchWithRetry(row.source_url, 10_000)).text());
+        if (candidate) candidate = new URL(candidate, row.source_url).href; // resolve relative srcs
         via = 'detail';
       }
       if (!candidate) {
