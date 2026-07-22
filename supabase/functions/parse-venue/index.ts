@@ -167,29 +167,38 @@ function cleanHtml(html: string, origin = ''): string {
     .trim();
 }
 
-/** t.me/s preview → newest N post blocks (post date + cover URL inline). */
-function telegramPosts(html: string, handle: string): string[] {
+/** t.me/s preview → newest N post blocks (post date + cover URL inline) plus a
+ * deterministic post-URL → first-photo map: the LLM echoes image_url per event
+ * unreliably when one post yields several events, so covers attach from the
+ * map at insert (same design as the Instagram coverByPermalink). */
+function telegramPosts(
+  html: string,
+  handle: string,
+): { posts: string[]; coverByPostUrl: Map<string, string> } {
   const blocks = html.split(
     new RegExp(`(?=<div class="tgme_widget_message[^"]*?" data-post="${handle}/)`),
   );
   const posts: string[] = [];
+  const coverByPostUrl = new Map<string, string>();
   for (const block of blocks) {
     const idMatch = block.match(new RegExp(`data-post="${handle}/(\\d+)"`));
     if (!idMatch) continue;
+    const postUrl = `https://t.me/${handle}/${idMatch[1]}`;
     const dateMatch = block.match(/<time[^>]*datetime="([^"]+)"/);
     const photoMatch = block.match(
       /tgme_widget_message_photo_wrap[^>]*?background-image:url\('([^']+)'\)/,
     );
+    if (photoMatch) coverByPostUrl.set(postUrl, photoMatch[1]); // first photo only
     const textMatch = block.match(
       /<div class="tgme_widget_message_text js-message_text"[^>]*>([\s\S]*?)<\/div>/,
     );
     const text = textMatch ? cleanHtml(textMatch[1].replace(/<br\s*\/?>/gi, '\n')) : '';
     if (!text) continue;
     posts.push(
-      `POST https://t.me/${handle}/${idMatch[1]} | published: ${dateMatch?.[1] ?? 'unknown'} | image: ${photoMatch?.[1] ?? 'none'}\n${text}`,
+      `POST ${postUrl} | published: ${dateMatch?.[1] ?? 'unknown'} | image: ${photoMatch?.[1] ?? 'none'}\n${text}`,
     );
   }
-  return posts.slice(-TELEGRAM_POSTS);
+  return { posts: posts.slice(-TELEGRAM_POSTS), coverByPostUrl };
 }
 
 // ── Claude plumbing ──────────────────────────────────────────────────────────
@@ -341,7 +350,7 @@ RULES:
 - PRICES: "Ulaznice od 4.500,00 RSD" / "od 2.500,00" → price_min_rsd: 4500 / 2500 (Serbian format: "." thousands, "," decimals). "donacija"/"донат" → price_min_rsd null, is_free false. Explicitly free → is_free true.
 - IGNORE navigation, SEO keyword spam, "Ostala mesta u blizini" (nearby-venue) sections, and unrelated cities.
 ${source.kind === 'telegram'
-    ? `- The input is a list of Telegram channel posts. Posts may omit the YEAR — infer it from the post's "published:" date (the event is on or shortly after it). Skip weekly schedule digests bundling many events, promos, and posts without a concrete event date. Use the post's image URL as image_url and the post URL as event_url.`
+    ? `- The input is a list of Telegram channel posts. Posts may omit the YEAR — infer it from the post's "published:" date (the event is on or shortly after it). Skip weekly schedule digests bundling many events, promos, and posts without a concrete event date. Set event_url to the post URL EXACTLY; image_url may be left null (covers attach from the post automatically).`
     : source.kind === 'instagram'
       ? `- The input is a list of Instagram posts; each starts with a "published:" date and a "url:" permalink, then the caption. Infer the YEAR from "published:". Skip weekly digests, promos, giveaways, and posts without a concrete date. Set event_url to the post's "url:" permalink EXACTLY. Leave image_url null.`
       : `- event_url/image_url only from URLs literally present in the input; null otherwise.`}
@@ -495,6 +504,7 @@ async function phaseExtract(
   let html = '';
   let igPayloads: string[] = [];
   let coverByPermalink: Map<string, string> | undefined;
+  let coverByPostUrl: Map<string, string> | undefined;
   if (source.kind === 'instagram') {
     const ig = await fetchInstagramPosts(source.handle); // Apify list of posts; no HTML fetch
     igPayloads = ig.payloads;
@@ -512,10 +522,11 @@ async function phaseExtract(
       ? igPayloads
       : source.kind === 'telegram'
         ? (() => {
-            const posts = telegramPosts(html, source.handle);
+            const tg = telegramPosts(html, source.handle);
+            coverByPostUrl = tg.coverByPostUrl;
             const chunks: string[] = [];
-            for (let i = 0; i < posts.length; i += TELEGRAM_CHUNK) {
-              chunks.push(posts.slice(i, i + TELEGRAM_CHUNK).join('\n\n---\n\n'));
+            for (let i = 0; i < tg.posts.length; i += TELEGRAM_CHUNK) {
+              chunks.push(tg.posts.slice(i, i + TELEGRAM_CHUNK).join('\n\n---\n\n'));
             }
             return chunks;
           })()
@@ -576,7 +587,9 @@ async function phaseExtract(
       }
       const cover = source.kind === 'instagram'
         ? (ev.event_url ? coverByPermalink?.get(ev.event_url) ?? null : null)
-        : (ev.image_url ?? null);
+        : source.kind === 'telegram'
+          ? ((ev.event_url ? coverByPostUrl?.get(ev.event_url) : undefined) ?? ev.image_url ?? null)
+          : (ev.image_url ?? null);
 
       // Fuzzy dedup at the same instant: a reworded re-post of a DB row merges
       // into it (backfilling cover/detail-url like the 23505 path); an in-run
