@@ -35,6 +35,9 @@ const TRANSLATE_BATCH = 10;
 const PHASE_TIME_BUDGET_MS = 100_000; // stop starting new work past this; re-run resumes
 const STORAGE_BUCKET = 'event-covers';
 const PUBLIC_OBJECT_MARKER = '/storage/v1/object/public/';
+const APIFY_ACTOR = 'apify~instagram-post-scraper';
+const INSTAGRAM_POSTS = 12;
+const INSTAGRAM_NEWER_THAN = '21 days';
 // Realistic browser UA: several venue sites (domomladine.org) 403 bot-looking agents.
 const BROWSER_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
@@ -328,7 +331,9 @@ RULES:
 - IGNORE navigation, SEO keyword spam, "Ostala mesta u blizini" (nearby-venue) sections, and unrelated cities.
 ${source.kind === 'telegram'
     ? `- The input is a list of Telegram channel posts. Posts may omit the YEAR — infer it from the post's "published:" date (the event is on or shortly after it). Skip weekly schedule digests bundling many events, promos, and posts without a concrete event date. Use the post's image URL as image_url and the post URL as event_url.`
-    : `- event_url/image_url only from URLs literally present in the input; null otherwise.`}
+    : source.kind === 'instagram'
+      ? `- The input is a list of Instagram posts; each starts with a "published:" date and a "url:" permalink, then the caption. Infer the YEAR from "published:". Skip weekly digests, promos, giveaways, and posts without a concrete date. Set event_url to the post's "url:" permalink EXACTLY. Leave image_url null.`
+      : `- event_url/image_url only from URLs literally present in the input; null otherwise.`}
 - CATEGORY: one of music, party, art, food, cinema, theatre, market, other. Exhibitions → "art", film → "cinema", concerts → "music", DJ/club → "party", ballet/opera/plays/talk-show-style stage shows → "theatre", lectures/games/workshops → "other". Null if truly unclear.
 - Keep title and description in the page's OWN language — translation happens in a separate pass.`;
 }
@@ -357,6 +362,61 @@ interface ExtractSummary {
   elapsed_ms: number;
 }
 
+async function fetchInstagramPosts(
+  handle: string,
+): Promise<{ payloads: string[]; coverByPermalink: Map<string, string> }> {
+  const token = Deno.env.get('APIFY_TOKEN');
+  if (!token) throw new Error('APIFY_TOKEN secret not set (instagram source)');
+
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 90_000);
+  let items: Array<Record<string, unknown>>;
+  try {
+    const res = await fetch(
+      `https://api.apify.com/v2/acts/${APIFY_ACTOR}/run-sync-get-dataset-items`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          username: [handle],
+          resultsLimit: INSTAGRAM_POSTS,
+          onlyPostsNewerThan: INSTAGRAM_NEWER_THAN,
+          skipPinnedPosts: true,
+          addParentData: false,
+        }),
+        signal: ctrl.signal,
+      },
+    );
+    if (!res.ok) throw new Error(`apify ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    items = await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const coverByPermalink = new Map<string, string>();
+  const posts: string[] = [];
+  for (const it of items) {
+    const caption = typeof it.caption === 'string' ? it.caption : '';
+    const permalink = typeof it.url === 'string' ? it.url : '';
+    if (!caption || !permalink) continue; // private / media-only rows come back empty
+    const published = typeof it.timestamp === 'string' ? it.timestamp : '';
+    const cover =
+      (typeof it.displayUrl === 'string' && it.displayUrl) ||
+      (Array.isArray(it.childPosts) &&
+        (it.childPosts[0] as { displayUrl?: string })?.displayUrl) ||
+      '';
+    if (cover) coverByPermalink.set(permalink, cover);
+    posts.push(`published: ${published}\nurl: ${permalink}\n\n${caption}`);
+  }
+  if (!posts.length) throw new Error(`no public posts for @${handle}`);
+
+  const payloads: string[] = [];
+  for (let i = 0; i < posts.length; i += TELEGRAM_CHUNK) {
+    payloads.push(posts.slice(i, i + TELEGRAM_CHUNK).join('\n\n---\n\n'));
+  }
+  return { payloads, coverByPermalink };
+}
+
 async function phaseExtract(
   admin: Admin,
   source: Source,
@@ -375,25 +435,33 @@ async function phaseExtract(
   // the LLM output for one synthetic chunk — exercises the repair/unparseable
   // path end-to-end incl. ingest_errors + non-green summary.
   let html = '';
-  if (!testRaw) {
+  let igPayloads: string[] = [];
+  let coverByPermalink: Map<string, string> | undefined;
+  if (source.kind === 'instagram') {
+    const ig = await fetchInstagramPosts(source.handle); // Apify list of posts; no HTML fetch
+    igPayloads = ig.payloads;
+    coverByPermalink = ig.coverByPermalink;
+  } else if (!testRaw) {
     const pageRes = await fetchWithRetry(source.url, 20_000);
     html = await pageRes.text();
     summary.fetched_bytes = html.length;
   }
 
-  // Payloads: telegram in chunks of 5 posts, HTML as one capped blob.
+  // Payloads: instagram/telegram in chunks of 5 posts, HTML as one capped blob.
   const payloads = testRaw
     ? ['test hook']
-    : source.kind === 'telegram'
-      ? (() => {
-          const posts = telegramPosts(html, source.handle);
-          const chunks: string[] = [];
-          for (let i = 0; i < posts.length; i += TELEGRAM_CHUNK) {
-            chunks.push(posts.slice(i, i + TELEGRAM_CHUNK).join('\n\n---\n\n'));
-          }
-          return chunks;
-        })()
-      : [cleanHtml(html, new URL(source.url).origin).slice(0, MAX_PAYLOAD_CHARS)];
+    : source.kind === 'instagram'
+      ? igPayloads
+      : source.kind === 'telegram'
+        ? (() => {
+            const posts = telegramPosts(html, source.handle);
+            const chunks: string[] = [];
+            for (let i = 0; i < posts.length; i += TELEGRAM_CHUNK) {
+              chunks.push(posts.slice(i, i + TELEGRAM_CHUNK).join('\n\n---\n\n'));
+            }
+            return chunks;
+          })()
+        : [cleanHtml(html, new URL(source.url).origin).slice(0, MAX_PAYLOAD_CHARS)];
   if (!payloads.length || !payloads[0]) throw new Error('empty payload after cleaning');
 
   // Existing rows for 23505-backfill matching (few rows; matched in JS).
@@ -454,6 +522,9 @@ async function phaseExtract(
         continue;
       }
       seen.add(key);
+      const cover = source.kind === 'instagram'
+        ? (ev.event_url ? coverByPermalink?.get(ev.event_url) ?? null : null)
+        : (ev.image_url ?? null);
 
       const { error: insErr } = await admin.from('events').insert({
         city_id: source.city_id,
@@ -465,8 +536,8 @@ async function phaseExtract(
         ends_at: endsAt,
         price_text: ev.price_min_rsd != null ? `od ${ev.price_min_rsd} RSD` : null,
         is_free: ev.is_free ?? false,
-        covers: ev.image_url ? [ev.image_url] : null, // raw URL; phase `covers` re-hosts
-        source_type: source.kind === 'telegram' ? 'telegram' : 'website',
+        covers: cover ? [cover] : null, // raw URL; phase `covers` re-hosts
+        source_type: source.kind === 'telegram' ? 'telegram' : source.kind === 'instagram' ? 'instagram' : 'website',
         source_url: ev.event_url ?? source.url,
         status: 'published',
       });
@@ -484,7 +555,7 @@ async function phaseExtract(
             Date.parse(r.starts_at) === Date.parse(startsAt),
         );
         const patch: Record<string, unknown> = {};
-        if (match && !match.covers?.length && ev.image_url) patch.covers = [ev.image_url];
+        if (match && !match.covers?.length && cover) patch.covers = [cover];
         if (match && ev.event_url && (match.source_url === source.url || !match.source_url)) {
           patch.source_url = ev.event_url;
         }
@@ -568,7 +639,7 @@ async function phaseTranslate(
     .from('events')
     .select('id, title, description')
     .eq('venue_id', source.venue_id)
-    .in('source_type', ['website', 'telegram'])
+    .in('source_type', ['website', 'telegram', 'instagram'])
     .is('source_ref', null) // parse-venue rows only (dcloza fills its own i18n)
     .is('title_i18n', null);
   if (error) throw new Error(error.message);
@@ -661,7 +732,7 @@ async function phaseCovers(admin: Admin, source: Source, venueName: string): Pro
     .from('events')
     .select('id, covers, source_url')
     .eq('venue_id', source.venue_id)
-    .in('source_type', ['website', 'telegram'])
+    .in('source_type', ['website', 'telegram', 'instagram'])
     .is('source_ref', null);
   if (error) throw new Error(error.message);
 
@@ -733,7 +804,7 @@ Deno.serve(async (req) => {
     .eq('venue_id', venueId)
     .eq('enabled', true)
     .neq('handle', 'dcloza')
-    .in('kind', ['telegram', 'official', 'tickets'])
+    .in('kind', ['telegram', 'official', 'tickets', 'instagram'])
     .maybeSingle();
   if (srcErr) return Response.json({ ok: false, error: srcErr.message }, { status: 500 });
   if (!source) {
