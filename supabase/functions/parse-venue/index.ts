@@ -595,9 +595,14 @@ Respond with ONLY a JSON array — no prose, no markdown fences:
 
 TITLE rules (identical to the rest of the catalog):
 - Translate the title ONLY when it is a DESCRIPTIVE phrase (e.g. RU "Вечер настольных игр" → EN "Board games night", SR "Veče društvenih igara"; SR "Izložba: X" → EN "Exhibition: X", RU "Выставка: X"). Otherwise keep it verbatim and IDENTICAL across en/ru/sr:
-  • PROPER NOUN (band, artist, brand, show, project name): keep EXACTLY the same in all three, even in Cyrillic; do NOT translate or transliterate ("Психея" stays "Психея" everywhere).
+  • PROPER NOUN (band, artist, brand, show, project name): keep the NAME itself unchanged — never translate its meaning — but the SCRIPT rules below still apply: a Cyrillic name is rendered in Latin for sr and en, kept Cyrillic for ru.
   • LATIN-SCRIPT title (e.g. "French Speaking Club", "Nazareth"): keep EXACTLY as-is and IDENTICAL in all three.
   For mixed titles, translate the descriptive parts and keep proper-noun / Latin-script parts verbatim.
+SCRIPT rules (apply to the FINAL strings, after the translate-vs-verbatim decision):
+- sr MUST ALWAYS be Serbian Latin (latinica). Transliterate ANY Cyrillic to Latin (Ђ→Đ, Ж→Ž, Љ→Lj, Њ→Nj, Ћ→Ć, Ч→Č, Џ→Dž, Ш→Š, and all other letters 1:1). Never emit Cyrillic in the sr field — this applies to descriptive titles AND proper nouns.
+- en MUST NOT contain Cyrillic. Transliterate Cyrillic proper nouns to Latin (e.g. "ЦИПЕЛИЦЕ" → "CIPELICE").
+- ru keeps Cyrillic as normal.
+- Latin-script input is NEVER converted to Cyrillic — these rules only romanize Cyrillic.
 - DESCRIPTION: when the input description is non-null, ALWAYS provide all three languages — translate into the missing ones, concise (one sentence). When the input description is null, return description_i18n: null.
 - Escape any double quotes inside JSON string values.`;
 
