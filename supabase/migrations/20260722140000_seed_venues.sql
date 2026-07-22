@@ -40,7 +40,7 @@ from (values
   ('belgrade', 'Škart',                   'skart',                   'Kneginje Ljubice 26'),
   ('belgrade', 'Novi Bioskop Zvezda',     'novi-bioskop-zvezda',     'Terazije 40'),
   -- Novi Sad
-  ('novi-sad', 'Pozorište Promena',       'pozoriste-promena',       'Ðure Jakšića 7'),
+  ('novi-sad', 'Pozorište Promena',       'pozoriste-promena',       'Đure Jakšića 7'),
   ('novi-sad', 'KC Lab',                  'kc-lab',                  'Dr Hempta 2'),
   ('novi-sad', 'SKCNS',                   'skcns',                   'Vladimira Perića Valtera 5'),
   ('novi-sad', 'Prostor',                 'prostor',                 'Beogradska 11 Petrovaradin'),
