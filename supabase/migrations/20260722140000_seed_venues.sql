@@ -1,6 +1,6 @@
 -- Venue catalog for the Instagram rollout: drop 5 obsolete venues, seed 52 new
--- ones (20 Belgrade, 32 Novi Sad). Unblocks 20260722120000_seed_instagram_sources
--- (re-run it after this applies — its insert-selects then match all venues).
+-- ones (20 Belgrade, 32 Novi Sad). Unblocks 20260722150000_seed_instagram_sources,
+-- which sorts after this and matches all venues via its insert-selects.
 --
 -- Delete safety: events.venue_id is ON DELETE RESTRICT, so if any events still
 -- reference these venues the delete FAILS LOUDLY (wanted — never force).
