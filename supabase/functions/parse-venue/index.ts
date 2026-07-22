@@ -338,6 +338,53 @@ ${source.kind === 'telegram'
 - Keep title and description in the page's OWN language — translation happens in a separate pass.`;
 }
 
+// ── Fuzzy dedup: distinctive-part title matching ─────────────────────────────
+// Daily re-runs re-process the same posts and the LLM rewords titles, so exact
+// (title, starts_at) matching lets near-duplicates pile up. Compare only events
+// at the SAME instant, on the DISTINCTIVE tokens (title minus format/stop/venue
+// noise) — "Kinoklub: X" vs "Kinoklub: Y" share a frame but stay distinct.
+
+// Extend as needed (ru/sr/en).
+const STOP_WORDS = new Set([
+  's', 'sa', 'с', 'i', 'и', 'u', 'в', 'na', 'на', 'za', 'за', 'o', 'об', 'про',
+  'the', 'a', 'an', 'of', 'and', 'with', 'from',
+]);
+// Recurring event-format words that frame a title. Extend as needed (ru/sr/en).
+const FORMAT_MARKERS = new Set([
+  'kinoklub', 'киноклуб', 'klub', 'клуб', 'film', 'filmski', 'фильм',
+  'koncert', 'концерт', 'izlozba', 'izložba', 'выставка', 'exhibition',
+  'radionica', 'workshop', 'vece', 'veče', 'večer', 'вечер',
+  'zurka', 'žurka', 'party', 'забава', 'quiz', 'квиз',
+  'predstava', 'представление', 'спектакль', 'dj', 'live',
+]);
+
+function normalizeTitle(t: string): string {
+  return t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+}
+
+function distinctiveTokens(title: string, venueName: string): Set<string> {
+  const venueTokens = new Set(normalizeTitle(venueName).split(' '));
+  const out = new Set<string>();
+  for (const tok of normalizeTitle(title).split(' ')) {
+    if (tok.length < 2) continue;
+    if (STOP_WORDS.has(tok) || FORMAT_MARKERS.has(tok) || venueTokens.has(tok)) continue;
+    if (/^\d{4}$/.test(tok)) continue; // years
+    out.add(tok);
+  }
+  return out;
+}
+
+/** Same-instant titles only. All-frame titles fall back to exact normalized
+ * equality so recurring formats never merge blindly. */
+function isSameEvent(titleA: string, titleB: string, venueName: string): boolean {
+  const a = distinctiveTokens(titleA, venueName);
+  const b = distinctiveTokens(titleB, venueName);
+  if (!a.size || !b.size) return normalizeTitle(titleA) === normalizeTitle(titleB);
+  let shared = 0;
+  for (const tok of a) if (b.has(tok)) shared += 1;
+  return shared / Math.min(a.size, b.size) >= 0.7;
+}
+
 interface ExistingRow {
   id: string;
   title: string;
@@ -473,7 +520,7 @@ async function phaseExtract(
 
   const now = Date.now();
   const horizon = now + MAX_MONTHS_AHEAD * 30 * 24 * 3600 * 1000;
-  const seen = new Set<string>();
+  const insertedThisRun: { title: string; startsAt: string }[] = [];
   const system = extractPrompt(source, venueName);
   // Per-chunk timeout = min(90s, remaining wall-clock budget). RU chunks
   // measure 25-72s depending on content and API load; a fixed cap either
@@ -516,15 +563,41 @@ async function phaseExtract(
         summary.dropped_invalid += 1;
         continue;
       }
-      const key = `${ev.title.trim().toLowerCase()}|${startsAt}`;
-      if (seen.has(key)) {
-        summary.duplicates += 1;
-        continue;
-      }
-      seen.add(key);
       const cover = source.kind === 'instagram'
         ? (ev.event_url ? coverByPermalink?.get(ev.event_url) ?? null : null)
         : (ev.image_url ?? null);
+
+      // Fuzzy dedup at the same instant: a reworded re-post of a DB row merges
+      // into it (backfilling cover/detail-url like the 23505 path); an in-run
+      // near-duplicate is just skipped.
+      const dbMatch = existing.find(
+        (r) =>
+          Date.parse(r.starts_at) === Date.parse(startsAt) &&
+          isSameEvent(ev.title, r.title, venueName),
+      );
+      if (dbMatch) {
+        summary.duplicates += 1;
+        const patch: Record<string, unknown> = {};
+        if (!dbMatch.covers?.length && cover) patch.covers = [cover];
+        if (ev.event_url && (dbMatch.source_url === source.url || !dbMatch.source_url)) {
+          patch.source_url = ev.event_url;
+        }
+        if (Object.keys(patch).length) {
+          await admin.from('events').update(patch).eq('id', dbMatch.id);
+          summary.backfilled += 1;
+        }
+        continue;
+      }
+      if (
+        insertedThisRun.some(
+          (p) =>
+            Date.parse(p.startsAt) === Date.parse(startsAt) &&
+            isSameEvent(ev.title, p.title, venueName),
+        )
+      ) {
+        summary.duplicates += 1;
+        continue;
+      }
 
       const { error: insErr } = await admin.from('events').insert({
         city_id: source.city_id,
@@ -567,6 +640,7 @@ async function phaseExtract(
       }
 
       summary.events_upserted += 1;
+      insertedThisRun.push({ title: ev.title, startsAt });
       if (summary.samples.length < 5) {
         summary.samples.push({
           title: ev.title,
