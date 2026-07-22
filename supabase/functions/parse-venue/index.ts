@@ -12,8 +12,12 @@
 //   covers    — no LLM. Re-hosts raw cover URLs (telegram CDN expires) or
 //               resolves og:image from the event's detail page, into the
 //               event-covers bucket. Per-image timeout + one retry.
+//   film      — no LLM. TMDb lookup for cinema events' film_query; fills
+//               events.film with localized titles that translate then uses
+//               verbatim. Runs after extract, before translate. Manual
+//               invocation only (not in the daily scheduler yet).
 //
-// Invoke: POST {"venue_id": "...", "phase": "extract"|"translate"|"covers"}
+// Invoke: POST {"venue_id": "...", "phase": "extract"|"translate"|"covers"|"film"}
 // (phase defaults to extract; venue_id is required — no batch mode).
 // Dedup stays the events_dedup_idx unique index (venue, starts_at,
 // lower(title)); a 23505 backfills covers/source_url on the existing row.
@@ -63,6 +67,7 @@ interface ExtractedEvent {
   event_url: string | null;
   image_url: string | null;
   category: string | null;
+  film_query: { title: string; year: number | null; country: string | null } | null;
 }
 
 const CATEGORIES = new Set(['music', 'party', 'art', 'food', 'cinema', 'theatre', 'market', 'other']);
@@ -310,7 +315,13 @@ const EXTRACT_SPEC = `Respond with ONLY a JSON array — no prose, no markdown f
   "is_free": boolean | null,
   "event_url": string | null,          // the event's OWN detail-page URL when the page links one — look for "(https://...)" after the title
   "image_url": string | null,          // a poster/image URL when directly available
-  "category": "music" | "party" | "art" | "food" | "cinema" | "theatre" | "market" | "other" | null
+  "category": "music" | "party" | "art" | "food" | "cinema" | "theatre" | "market" | "other" | null,
+  "film_query": { "title": string, "year": number | null, "country": string | null } | null
+                                       // ONLY for category "cinema": the film's name in the SOURCE
+                                       // language EXACTLY as written in the input, plus release year
+                                       // and production country when stated (else null). null when
+                                       // the event is not a film screening, when the film cannot be
+                                       // identified, or for every non-cinema category.
 }
 Escape any double quotes inside JSON string values (Serbian titles often contain "quoted" names).
 Return [] if the input has no resolvable upcoming events.`;
@@ -613,6 +624,8 @@ async function phaseExtract(
         source_type: source.kind === 'telegram' ? 'telegram' : source.kind === 'instagram' ? 'instagram' : 'website',
         source_url: ev.event_url ?? source.url,
         status: 'published',
+        // Lookup pending until phase `film` adds `resolved` (true or false).
+        film: ev.category === 'cinema' && ev.film_query?.title ? { query: ev.film_query } : null,
       });
 
       if (insErr) {
@@ -663,11 +676,12 @@ async function phaseExtract(
 // Same i18n rules as parse-dcloza so the catalog stays consistent.
 const TRANSLATE_PROMPT = `You translate event listings for a Belgrade events app into English (en), Russian (ru) and Serbian (sr, Latin script).
 
-Input: a JSON array of {id, title, description} in their source language.
+Input: a JSON array of {id, title, description, film_titles?} in their source language.
 Respond with ONLY a JSON array — no prose, no markdown fences:
 [{ "id": string, "title_i18n": {"en": string, "ru": string, "sr": string}, "description_i18n": {"en": string, "ru": string, "sr": string} | null }]
 
 TITLE rules (identical to the rest of the catalog):
+- If film_titles is provided, it OVERRIDES every other TITLE rule (descriptive, Latin-script, proper-noun) for the FILM-NAME portion of the title: take the film name from film_titles.{en,ru,sr} instead of translating or transliterating it yourself; translate only the surrounding frame normally. The SCRIPT rules below STILL apply to the result — a Cyrillic film_titles.sr (e.g. «Опасне девојке») is romanized to Serbian Latin («Opasne devojke»), and en must never contain Cyrillic.
 - Translate the title ONLY when it is a DESCRIPTIVE phrase (e.g. RU "Вечер настольных игр" → EN "Board games night", SR "Veče društvenih igara"; SR "Izložba: X" → EN "Exhibition: X", RU "Выставка: X"). Otherwise keep it verbatim and IDENTICAL across en/ru/sr:
   • PROPER NOUN (band, artist, brand, show, project name): keep the NAME itself unchanged — never translate its meaning — but the SCRIPT rules below still apply: a Cyrillic name is rendered in Latin for sr and en, kept Cyrillic for ru.
   • LATIN-SCRIPT title (e.g. "French Speaking Club", "Nazareth"): keep EXACTLY as-is and IDENTICAL in all three.
@@ -684,6 +698,7 @@ interface PendingTranslation {
   id: string;
   title: string;
   description: string | null;
+  film: { resolved?: boolean; titles?: Record<string, string> } | null;
 }
 
 interface TranslationResult {
@@ -716,7 +731,7 @@ async function phaseTranslate(
 
   const { data: rows, error } = await admin
     .from('events')
-    .select('id, title, description')
+    .select('id, title, description, film')
     .eq('venue_id', source.venue_id)
     .in('source_type', ['website', 'telegram', 'instagram'])
     .is('source_ref', null) // parse-venue rows only (dcloza fills its own i18n)
@@ -730,7 +745,14 @@ async function phaseTranslate(
       summary.errors.push(`time budget hit after ${summary.translated}/${pending.length}; re-run to resume`);
       break;
     }
-    const batch = pending.slice(i, i + TRANSLATE_BATCH);
+    // Resolved film titles ride along as authoritative names; the raw film
+    // column never reaches the LLM.
+    const batch = pending.slice(i, i + TRANSLATE_BATCH).map((p) => ({
+      id: p.id,
+      title: p.title,
+      description: p.description,
+      ...(p.film?.resolved && p.film.titles ? { film_titles: p.film.titles } : {}),
+    }));
     let results: TranslationResult[];
     try {
       const result = await claudeJsonArray<TranslationResult>(
@@ -853,8 +875,139 @@ async function phaseCovers(admin: Admin, source: Source, venueName: string): Pro
   return summary;
 }
 
+// ── Phase: film ──────────────────────────────────────────────────────────────
+// TMDb lookup for cinema events so titles use the film's real localized name.
+// Strict: no confident hit → resolved:false and titles stay as-is (never guess).
+// `resolved` present (either value) = lookup done, never retried.
+const TMDB_URL = 'https://api.themoviedb.org/3';
+
+interface FilmQuery {
+  title: string;
+  year: number | null;
+  country: string | null;
+}
+
+interface FilmRow {
+  id: string;
+  film: { query: FilmQuery; resolved?: boolean } | null;
+}
+
+interface FilmSummary {
+  phase: 'film';
+  venue: string;
+  pending: number;
+  resolved: number;
+  no_match: number;
+  errors: string[];
+  elapsed_ms: number;
+}
+
+/** v4 read tokens (JWTs) go in the Authorization header; a v3 key falls back to
+ * the api_key param (we log no URLs, so the key never lands in a log line). */
+async function tmdbGet(
+  key: string,
+  path: string,
+  params: Record<string, string>,
+): Promise<Record<string, unknown>> {
+  const url = new URL(`${TMDB_URL}${path}`);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  const bearer = key.startsWith('eyJ');
+  if (!bearer) url.searchParams.set('api_key', key);
+  const res = await fetch(url, {
+    headers: bearer ? { Authorization: `Bearer ${key}` } : {},
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!res.ok) throw new Error(`tmdb ${res.status} on ${path}`);
+  return await res.json();
+}
+
+async function phaseFilm(admin: Admin, source: Source, venueName: string): Promise<FilmSummary> {
+  const t0 = Date.now();
+  const summary: FilmSummary = {
+    phase: 'film', venue: venueName, pending: 0, resolved: 0, no_match: 0,
+    errors: [], elapsed_ms: 0,
+  };
+  const tmdbKey = Deno.env.get('TMDB_API_KEY');
+  if (!tmdbKey) {
+    // No-op, never crash the pipeline — the run reports ok:false with this message.
+    summary.errors.push('TMDB_API_KEY secret not set; film phase skipped');
+    summary.elapsed_ms = Date.now() - t0;
+    return summary;
+  }
+
+  const { data: rows, error } = await admin
+    .from('events')
+    .select('id, film')
+    .eq('venue_id', source.venue_id)
+    .not('film', 'is', null);
+  if (error) throw new Error(error.message);
+  // `film ? 'query' and not film ? 'resolved'` — filtered in JS, rows are few.
+  const pending = ((rows ?? []) as FilmRow[]).filter(
+    (r) => r.film?.query?.title && !('resolved' in (r.film ?? {})),
+  );
+  summary.pending = pending.length;
+
+  for (const row of pending) {
+    if (Date.now() - t0 > PHASE_TIME_BUDGET_MS) {
+      summary.errors.push(
+        `time budget hit after ${summary.resolved + summary.no_match}/${pending.length}; re-run to resume`,
+      );
+      break;
+    }
+    const query = row.film!.query;
+    let film: Record<string, unknown> = { query, resolved: false };
+    try {
+      const search = await tmdbGet(tmdbKey, '/search/movie', {
+        query: query.title,
+        ...(query.year ? { year: String(query.year) } : {}),
+      });
+      const results = (search.results ?? []) as Array<{
+        id: number;
+        original_title?: string;
+        release_date?: string;
+      }>;
+      const top = results[0];
+      // Confident = top result within ±1 year; without a year, a single
+      // unambiguous result. Anything else stays unresolved — never guess.
+      const confident = query.year
+        ? Boolean(top?.release_date) && Math.abs(Number(top.release_date!.slice(0, 4)) - query.year) <= 1
+        : results.length === 1;
+      if (top && confident) {
+        const tr = await tmdbGet(tmdbKey, `/movie/${top.id}/translations`, {});
+        const translations = (tr.translations ?? []) as Array<{
+          iso_639_1: string;
+          data?: { title?: string };
+        }>;
+        const t = (lang: string) =>
+          translations.find((x) => x.iso_639_1 === lang && x.data?.title)?.data?.title ||
+          top.original_title || query.title;
+        film = {
+          query,
+          tmdb_id: top.id,
+          titles: {
+            original: top.original_title ?? query.title,
+            en: t('en'), ru: t('ru'), sr: t('sr'),
+          },
+          resolved: true,
+        };
+        summary.resolved += 1;
+      } else {
+        summary.no_match += 1;
+      }
+    } catch (e) {
+      summary.no_match += 1;
+      summary.errors.push(`${row.id}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+    const { error: updErr } = await admin.from('events').update({ film }).eq('id', row.id);
+    if (updErr) summary.errors.push(`update ${row.id}: ${updErr.message}`);
+  }
+
+  summary.elapsed_ms = Date.now() - t0;
+  return summary;
+}
+
 // ── Handler ──────────────────────────────────────────────────────────────────
-type Phase = 'extract' | 'translate' | 'covers';
+type Phase = 'extract' | 'translate' | 'covers' | 'film';
 
 Deno.serve(async (req) => {
   const admin = createClient(
@@ -873,7 +1026,7 @@ Deno.serve(async (req) => {
   if (!venueId) {
     return Response.json({ ok: false, error: 'venue_id is required (per-venue invocation only)' }, { status: 400 });
   }
-  if (!['extract', 'translate', 'covers'].includes(phase)) {
+  if (!['extract', 'translate', 'covers', 'film'].includes(phase)) {
     return Response.json({ ok: false, error: `unknown phase '${phase}'` }, { status: 400 });
   }
 
@@ -903,7 +1056,9 @@ Deno.serve(async (req) => {
         ? await phaseExtract(admin, src, venueName, anthropicKey, testRaw)
         : phase === 'translate'
           ? await phaseTranslate(admin, src, venueName, anthropicKey)
-          : await phaseCovers(admin, src, venueName);
+          : phase === 'film'
+            ? await phaseFilm(admin, src, venueName)
+            : await phaseCovers(admin, src, venueName);
 
     await admin.from('ingest_runs').insert({
       source_handle: phase === 'extract' ? src.handle : `${src.handle}:${phase}`,
@@ -914,7 +1069,9 @@ Deno.serve(async (req) => {
           ? summary.events_upserted
           : summary.phase === 'translate'
             ? summary.translated
-            : summary.resolved_inline + summary.resolved_detail_page,
+            : summary.phase === 'film'
+              ? summary.resolved
+              : summary.resolved_inline + summary.resolved_detail_page,
       errors: summary.errors.length,
       error_detail: summary.errors.length ? summary.errors.join(' | ') : null,
       finished_at: new Date().toISOString(),
