@@ -49,3 +49,5 @@ example
 .fig-tmp/
 ajmo-main/
 .claude/settings.local.json
+supabase/.temp/
+.claude/launch.json
