@@ -44,6 +44,16 @@
 // classifier change, invalidate with
 //   delete from source_items;                        -- whole fleet
 //   delete from source_items where source_id = ...;  -- one source
+//
+// Organizer sources (sources.venue_id IS NULL — IG accounts announcing events
+// at rotating venues): invoked with {"source_id": ...} instead of venue_id.
+// Extract injects the full venue catalogue (both cities) into the prompt and
+// the model picks a venue per event — never string-matched in code: Serbian
+// declension ("u KC Gradu") defeats naive matching. events.city_id follows the
+// RESOLVED venue, not the source. No venue resolved → the event is dropped and
+// its post recorded as 'unresolved_venue' (never skip-eligible, re-extracts
+// until the venue joins the catalogue). Venue-backed sources are untouched —
+// their prompt stays byte-identical, so their ledger verdicts stay valid.
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { jsonrepair } from 'npm:jsonrepair@3';
@@ -75,7 +85,7 @@ interface Source {
   handle: string;
   url: string;
   city_id: string;
-  venue_id: string;
+  venue_id: string | null; // null = organizer source; venue resolved per event
 }
 
 interface ExtractedEvent {
@@ -89,6 +99,7 @@ interface ExtractedEvent {
   image_url: string | null;
   category: string | null;
   film_query: { title: string; year: number | null; country: string | null } | null;
+  venue?: number | string | null; // organizer sources only: index into the prompt's VENUES list
 }
 
 const CATEGORIES = new Set(['music', 'party', 'art', 'food', 'cinema', 'theatre', 'market', 'other']);
@@ -372,7 +383,7 @@ function rawSnippet(raw: string): string {
 
 async function logIngestError(
   admin: Admin,
-  venueId: string,
+  venueId: string | null,
   phase: string,
   kind: 'repair_needed' | 'unparseable' | 'phase_failed',
   message: string,
@@ -394,7 +405,7 @@ async function logIngestError(
  */
 async function claudeJsonArray<T>(
   admin: Admin,
-  venueId: string,
+  venueId: string | null,
   phase: string,
   apiKey: string,
   model: string,
@@ -440,9 +451,15 @@ const EXTRACT_SPEC = `Respond with ONLY a JSON array — no prose, no markdown f
 Escape any double quotes inside JSON string values (Serbian titles often contain "quoted" names).
 Return [] if the input has no resolvable upcoming events.`;
 
-function extractPrompt(source: Source, venueName: string): string {
+/** `venueList` set = organizer source: the model resolves each event's venue
+ * from the injected catalogue. Absent = venue-backed source, whose prompt must
+ * stay BYTE-IDENTICAL to before (the source_items ledger keys on it). */
+function extractPrompt(source: Source, venueName: string, venueList?: string): string {
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: TZ }).format(new Date());
-  return `You extract structured events from one venue's page as STRICT JSON (never prose). The venue is ALWAYS "${venueName}" (Serbia); never extract other venues.
+  const intro = venueList
+    ? `You extract structured events from an event ORGANIZER's posts as STRICT JSON (never prose). The organizer is "${venueName}" (Serbia) — NOT a venue: every event happens at one of the catalogued venues listed under VENUES at the end.`
+    : `You extract structured events from one venue's page as STRICT JSON (never prose). The venue is ALWAYS "${venueName}" (Serbia); never extract other venues.`;
+  return `${intro}
 
 ${EXTRACT_SPEC}
 
@@ -464,7 +481,11 @@ ${source.kind === 'telegram' || source.kind === 'instagram'
 - After the classification objects, emit the event objects for announcement posts only.`
       : `- event_url/image_url only from URLs literally present in the input; null otherwise.`}
 - CATEGORY: one of music, party, art, food, cinema, theatre, market, other. Exhibitions → "art", film → "cinema", concerts → "music", DJ/club → "party", ballet/opera/plays/talk-show-style stage shows → "theatre", lectures/games/workshops → "other". Null if truly unclear.
-- Keep title and description in the page's OWN language — translation happens in a separate pass.`;
+- Keep title and description in the page's OWN language — translation happens in a separate pass.${venueList ? `
+- VENUE: every event object must ALSO include "venue": the [number] of the venue where the event happens, chosen from the VENUES list. Posts name venues in inflected Serbian ("u KC Gradu" → KC Grad, "u Auditoriji" → Auditoria, "kod Škarta" → Škart) or by @instagram handle — match by meaning, not exact spelling. Choose ONLY from the list; if the venue is not on the list, is a private/unnamed space, or is unclear, use "venue": null — NEVER guess.
+
+VENUES:
+${venueList}` : ''}`;
 }
 
 // ── Fuzzy dedup: distinctive-part title matching ─────────────────────────────
@@ -529,6 +550,7 @@ function isSameEvent(titleA: string, titleB: string, venueName: string): boolean
 
 interface ExistingRow {
   id: string;
+  venue_id: string;
   title: string;
   starts_at: string;
   ends_at: string | null;
@@ -558,6 +580,8 @@ interface ExtractSummary {
   duplicates: number;
   time_corrected: number;
   dropped_invalid: number;
+  unresolved_venue: number; // organizer events dropped: no catalogued venue resolved
+  unresolved: { title: string; date_start: string; post: string | null; snippet: string }[];
   skipped_recap: number;
   skipped_nonevents: number;
   recap_posts: string[];
@@ -641,6 +665,7 @@ async function phaseExtract(
     parsed_via: [], items_total: 0, items_skipped: 0,
     events_extracted: 0, events_upserted: 0, backfilled: 0,
     duplicates: 0, time_corrected: 0, dropped_invalid: 0,
+    unresolved_venue: 0, unresolved: [],
     skipped_recap: 0, skipped_nonevents: 0, recap_posts: [], ambiguous_posts: [],
     errors: [], samples: [], elapsed_ms: 0,
   };
@@ -685,13 +710,42 @@ async function phaseExtract(
     return summary;
   }
 
+  // Organizer source: build the venue catalogue for the prompt (both cities —
+  // an organizer can hold an event in the other city; city follows the venue).
+  // Numeric [indices] instead of UUIDs: short, and a mistyped index resolves to
+  // nothing rather than to a plausible-looking wrong id.
+  const organizer = !source.venue_id;
+  const venueByIndex = new Map<number, { id: string; name: string; city_id: string }>();
+  let venueList = '';
+  if (organizer) {
+    const { data: vRows, error: vErr } = await admin
+      .from('venues')
+      .select('id, name, city_id, instagram, cities(name)')
+      .order('name');
+    if (vErr) throw new Error(`venue catalogue: ${vErr.message}`);
+    const byCity = new Map<string, string[]>();
+    ((vRows ?? []) as Array<{
+      id: string; name: string; city_id: string; instagram: string | null;
+      cities: { name: string } | { name: string }[] | null;
+    }>).forEach((v, i) => {
+      venueByIndex.set(i + 1, { id: v.id, name: v.name, city_id: v.city_id });
+      const ig = v.instagram?.replace(/^.*instagram\.com\//, '').replace(/\/+$/, '');
+      const city = (Array.isArray(v.cities) ? v.cities[0]?.name : v.cities?.name) ?? '?';
+      byCity.set(city, [...(byCity.get(city) ?? []), `[${i + 1}] ${v.name}${ig ? ` (@${ig})` : ''}`]);
+    });
+    venueList = [...byCity].map(([city, rows]) => `${city}:\n${rows.join('\n')}`).join('\n');
+  }
+
   // Existing rows for source_ref / 23505-backfill matching (few rows;
   // JS-matched). Loaded before the ledger filter because skipping a 'kept'
   // item requires its event rows to still exist.
-  const { data: existingRows } = await admin
+  // ponytail: the organizer branch loads the whole events table (~300 rows
+  // today); scope it to the shortlist's venue ids if the catalogue grows.
+  let existingQ = admin
     .from('events')
-    .select('id, title, starts_at, ends_at, covers, source_url, source_ref')
-    .eq('venue_id', source.venue_id);
+    .select('id, venue_id, title, starts_at, ends_at, covers, source_url, source_ref');
+  if (source.venue_id) existingQ = existingQ.eq('venue_id', source.venue_id);
+  const { data: existingRows } = await existingQ;
   const existing = (existingRows ?? []) as ExistingRow[];
   const existingRefs = new Set(existing.map((r) => r.source_ref).filter(Boolean) as string[]);
 
@@ -726,7 +780,9 @@ async function phaseExtract(
         // 'kept' items must still have their event rows — the ledger must
         // never suppress an event back into non-existence (repair safety).
         const refsAlive = (row?.event_refs ?? []).every((ref) => existingRefs.has(ref));
-        if (!forceRefresh && row && hashOk && row.outcome !== 'error' && refsAlive) skipped.push(it);
+        // 'unresolved_venue' is not a settled verdict: the post keeps
+        // re-extracting until its venue joins the catalogue (or it ages out).
+        if (!forceRefresh && row && hashOk && !['error', 'unresolved_venue'].includes(row.outcome) && refsAlive) skipped.push(it);
         else toExtract.push(it);
       }
       summary.items_skipped = skipped.length;
@@ -768,8 +824,8 @@ async function phaseExtract(
 
   const now = Date.now();
   const horizon = now + MAX_MONTHS_AHEAD * 30 * 24 * 3600 * 1000;
-  const insertedThisRun: { title: string; startsAt: string; ref: string | null }[] = [];
-  const system = extractPrompt(source, venueName);
+  const insertedThisRun: { title: string; startsAt: string; ref: string | null; venueId: string }[] = [];
+  const system = extractPrompt(source, venueName, organizer ? venueList : undefined);
   // Per-chunk timeout = min(90s, remaining wall-clock budget). RU chunks
   // measure 25-72s depending on content and API load; a fixed cap either
   // wastes budget or kills healthy calls. A chunk that can't start within
@@ -832,6 +888,7 @@ async function phaseExtract(
     const keptRefs = new Map<string, (string | null)[]>();
     const droppedItems = new Set<string>();
     const erroredItems = new Set<string>();
+    const unresolvedItems = new Set<string>();
     const itemOf = (ev: ExtractedEvent): string | null =>
       isPost ? (ev.event_url && itemUrls.has(ev.event_url) ? ev.event_url : null) : source.url;
     const keep = (ev: ExtractedEvent, ref: string | null) => {
@@ -857,6 +914,30 @@ async function phaseExtract(
         if (iu) droppedItems.add(iu);
         continue;
       }
+
+      // Organizer source: map the model's venue index to a real venue — the
+      // event's city and venue follow the RESOLUTION, never the source. No
+      // resolution → drop + report (the miss list tells us whether the venue
+      // is missing from the catalogue or the post was just vague).
+      let eventVenue = { id: source.venue_id as string, city_id: source.city_id, name: venueName };
+      if (organizer) {
+        const opt = venueByIndex.get(Number(ev.venue));
+        if (!opt) {
+          summary.unresolved_venue += 1;
+          const iu = itemOf(ev);
+          if (iu) unresolvedItems.add(iu);
+          const block = iu ? chunk.find((c) => c.url === iu)?.block ?? '' : '';
+          summary.unresolved.push({
+            title: ev.title,
+            date_start: ev.date_start,
+            post: iu,
+            snippet: block.split('\n\n').slice(1).join(' ').slice(0, 200),
+          });
+          continue;
+        }
+        eventVenue = opt;
+      }
+
       const cover = source.kind === 'instagram'
         ? (ev.event_url ? coverByPermalink?.get(ev.event_url) ?? null : null)
         : source.kind === 'telegram'
@@ -900,7 +981,10 @@ async function phaseExtract(
       // row merges into it (backfilling cover/detail-url/source_ref); an
       // in-run near-duplicate is just skipped.
       const dbMatch = existing.find(
-        (r) => nearInstant(r.starts_at, startsAt) && isSameEvent(ev.title, r.title, venueName),
+        (r) =>
+          r.venue_id === eventVenue.id &&
+          nearInstant(r.starts_at, startsAt) &&
+          isSameEvent(ev.title, r.title, eventVenue.name),
       );
       if (dbMatch) {
         summary.duplicates += 1;
@@ -922,7 +1006,10 @@ async function phaseExtract(
         continue;
       }
       const twin = insertedThisRun.find(
-        (p) => nearInstant(p.startsAt, startsAt) && isSameEvent(ev.title, p.title, venueName),
+        (p) =>
+          p.venueId === eventVenue.id &&
+          nearInstant(p.startsAt, startsAt) &&
+          isSameEvent(ev.title, p.title, eventVenue.name),
       );
       if (twin) {
         summary.duplicates += 1;
@@ -931,8 +1018,8 @@ async function phaseExtract(
       }
 
       const { error: insErr } = await admin.from('events').insert({
-        city_id: source.city_id,
-        venue_id: source.venue_id,
+        city_id: eventVenue.city_id,
+        venue_id: eventVenue.id,
         title: ev.title.trim(),
         description: ev.description || null,
         category: CATEGORIES.has(ev.category ?? '') ? ev.category : 'other',
@@ -963,6 +1050,7 @@ async function phaseExtract(
           (ref ? existing.find((r) => r.source_ref === ref) : undefined) ??
           existing.find(
             (r) =>
+              r.venue_id === eventVenue.id &&
               r.title.toLowerCase() === ev.title.trim().toLowerCase() &&
               Date.parse(r.starts_at) === Date.parse(startsAt),
           );
@@ -986,7 +1074,7 @@ async function phaseExtract(
 
       summary.events_upserted += 1;
       keep(ev, ref);
-      insertedThisRun.push({ title: ev.title, startsAt, ref });
+      insertedThisRun.push({ title: ev.title, startsAt, ref, venueId: eventVenue.id });
       if (summary.samples.length < 5) {
         summary.samples.push({
           title: ev.title,
@@ -1010,6 +1098,9 @@ async function phaseExtract(
         const kept = keptRefs.get(it.url);
         let outcome: string | null;
         if (erroredItems.has(it.url)) outcome = 'error';
+        // Before 'kept': one unresolved event on a post outranks its resolved
+        // siblings — the whole post re-extracts so the miss is never buried.
+        else if (unresolvedItems.has(it.url)) outcome = 'unresolved_venue';
         else if (kept) outcome = kept.includes(null) ? 'error' : 'kept';
         else if (recapUrls.has(it.url)) outcome = 'recap';
         else if (noneventUrls.has(it.url)) outcome = 'nonevent';
@@ -1061,6 +1152,19 @@ SCRIPT rules (apply to the FINAL strings, after the translate-vs-verbatim decisi
 - DESCRIPTION: when the input description is non-null, ALWAYS provide all three languages — translate into the missing ones, concise (one sentence). When the input description is null, return description_i18n: null.
 - Escape any double quotes inside JSON string values.`;
 
+/** Events created by a venue-less (organizer) source: the rows whose
+ * source_ref landed in the source's ledger. Organizer events span venues, so
+ * venue_id can't scope the enrichment phases. Refs that merged into a venue's
+ * own row ride along harmlessly — those rows are already enriched. */
+async function organizerRefs(admin: Admin, sourceId: string): Promise<string[]> {
+  const { data, error } = await admin
+    .from('source_items')
+    .select('event_refs')
+    .eq('source_id', sourceId);
+  if (error) throw new Error(`organizer refs: ${error.message}`);
+  return [...new Set(((data ?? []) as { event_refs: string[] | null }[]).flatMap((r) => r.event_refs ?? []))];
+}
+
 interface PendingTranslation {
   id: string;
   title: string;
@@ -1096,16 +1200,21 @@ async function phaseTranslate(
     parsed_via: [], errors: [], elapsed_ms: 0,
   };
 
-  const { data: rows, error } = await admin
+  let pendingQ = admin
     .from('events')
     .select('id, title, description, film')
-    .eq('venue_id', source.venue_id)
-    // No source_ref filter: parse-venue rows carry source_ref now. The dcloza
-    // venue never reaches these phases (its only source is excluded upstream).
+    // No source_ref filter for venue-backed sources: parse-venue rows carry
+    // source_ref now. The dcloza venue never reaches these phases (its only
+    // source is excluded upstream).
     .in('source_type', ['website', 'telegram', 'instagram'])
     .is('title_i18n', null);
+  pendingQ = source.venue_id
+    ? pendingQ.eq('venue_id', source.venue_id)
+    : pendingQ.in('source_ref', await organizerRefs(admin, source.id));
+  const { data: rows, error } = await pendingQ;
   if (error) throw new Error(error.message);
   const pending = (rows ?? []) as PendingTranslation[];
+  const pendingIds = new Set(pending.map((p) => p.id));
   summary.pending = pending.length;
 
   for (let i = 0; i < pending.length; i += TRANSLATE_BATCH) {
@@ -1134,12 +1243,13 @@ async function phaseTranslate(
       continue;
     }
     for (const r of results) {
-      if (!r?.id || !r.title_i18n?.en || !r.title_i18n?.ru || !r.title_i18n?.sr) continue;
+      // A hallucinated id can't escape the batch we sent (works for organizer
+      // sources too, where a single venue_id guard doesn't exist).
+      if (!r?.id || !pendingIds.has(r.id) || !r.title_i18n?.en || !r.title_i18n?.ru || !r.title_i18n?.sr) continue;
       const { error: updErr } = await admin
         .from('events')
         .update({ title_i18n: r.title_i18n, description_i18n: r.description_i18n ?? null })
-        .eq('id', r.id)
-        .eq('venue_id', source.venue_id); // never cross venues even on a hallucinated id
+        .eq('id', r.id);
       if (updErr) summary.errors.push(`update ${r.id}: ${updErr.message}`);
       else summary.translated += 1;
     }
@@ -1197,11 +1307,14 @@ async function phaseCovers(admin: Admin, source: Source, venueName: string): Pro
     resolved_inline: 0, resolved_detail_page: 0, unresolved: 0, errors: [], elapsed_ms: 0,
   };
 
-  const { data: rows, error } = await admin
+  let coverQ = admin
     .from('events')
     .select('id, covers, source_url')
-    .eq('venue_id', source.venue_id)
     .in('source_type', ['website', 'telegram', 'instagram']);
+  coverQ = source.venue_id
+    ? coverQ.eq('venue_id', source.venue_id)
+    : coverQ.in('source_ref', await organizerRefs(admin, source.id));
+  const { data: rows, error } = await coverQ;
   if (error) throw new Error(error.message);
 
   const needy = ((rows ?? []) as CoverRow[]).filter(
@@ -1302,11 +1415,14 @@ async function phaseFilm(admin: Admin, source: Source, venueName: string): Promi
     return summary;
   }
 
-  const { data: rows, error } = await admin
+  let filmQ = admin
     .from('events')
     .select('id, film')
-    .eq('venue_id', source.venue_id)
     .not('film', 'is', null);
+  filmQ = source.venue_id
+    ? filmQ.eq('venue_id', source.venue_id)
+    : filmQ.in('source_ref', await organizerRefs(admin, source.id));
+  const { data: rows, error } = await filmQ;
   if (error) throw new Error(error.message);
   // `film ? 'query' and not film ? 'resolved'` — filtered in JS, rows are few.
   const pending = ((rows ?? []) as FilmRow[]).filter(
@@ -1389,29 +1505,36 @@ Deno.serve(async (req) => {
   const body = await req.json().catch(() => ({}));
   const params = new URL(req.url).searchParams;
   const venueId = body?.venue_id ?? params.get('venue_id');
+  const sourceId = body?.source_id ?? params.get('source_id');
   const phase = (body?.phase ?? params.get('phase') ?? 'extract') as Phase;
-  if (!venueId) {
-    return Response.json({ ok: false, error: 'venue_id is required (per-venue invocation only)' }, { status: 400 });
+  if (!venueId && !sourceId) {
+    return Response.json({ ok: false, error: 'venue_id or source_id is required (per-source invocation only)' }, { status: 400 });
   }
   if (!['extract', 'translate', 'covers', 'film'].includes(phase)) {
     return Response.json({ ok: false, error: `unknown phase '${phase}'` }, { status: 400 });
   }
 
-  const { data: source, error: srcErr } = await admin
+  // source_id reaches venue-less organizer sources (no venue to key on);
+  // venue_id stays the path for the venue-backed fleet.
+  let srcQ = admin
     .from('sources')
     .select('id, kind, handle, url, city_id, venue_id')
-    .eq('venue_id', venueId)
     .eq('enabled', true)
     .neq('handle', 'dcloza')
-    .in('kind', ['telegram', 'official', 'tickets', 'instagram'])
-    .maybeSingle();
+    .in('kind', ['telegram', 'official', 'tickets', 'instagram']);
+  srcQ = sourceId ? srcQ.eq('id', sourceId) : srcQ.eq('venue_id', venueId);
+  const { data: source, error: srcErr } = await srcQ.maybeSingle();
   if (srcErr) return Response.json({ ok: false, error: srcErr.message }, { status: 500 });
   if (!source) {
-    return Response.json({ ok: false, error: `no enabled source for venue ${venueId}` }, { status: 404 });
+    return Response.json(
+      { ok: false, error: `no enabled source for ${sourceId ? `source ${sourceId}` : `venue ${venueId}`}` },
+      { status: 404 },
+    );
   }
   const src = source as Source;
-  const { data: venue } = await admin.from('venues').select('name').eq('id', src.venue_id).single();
-  const venueName = (venue?.name as string) ?? src.handle;
+  const venueName = src.venue_id
+    ? (((await admin.from('venues').select('name').eq('id', src.venue_id).single()).data?.name as string) ?? src.handle)
+    : src.handle; // organizer source: no venue — the handle names the run
 
   // Test hook (extract only): `_test_raw` in the body is parsed as the LLM
   // output instead of fetching/calling Claude — verifies the fail-loud path.
