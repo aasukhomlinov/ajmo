@@ -4,19 +4,24 @@ import { SectionList, StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { cityHeaderLabel } from '@/lib/cities';
-import { dateChipLabel, timeLabel } from '@/lib/datetime';
+import {
+  dateChipLabel,
+  dateRangeChipLabel,
+  dateRangeLabel,
+  isMultiDay,
+  timeLabel,
+} from '@/lib/datetime';
 import { useSavedIdSet, useToggleSave } from '@/lib/api/saves';
 import { useT } from '@/lib/i18n';
 import { useActiveCity } from '@/lib/stores/city';
 import { theme } from '@/lib/theme';
-import type { Event } from '@/lib/types';
 import { EmptyState, EventCardSkeleton, ListSectionHeader, Screen } from '@/ui';
 
 import { categoryLabel } from './categories';
 import { DiscoverHeader } from './DiscoverHeader';
 import { EventCard } from './EventCard';
 import { FilterBar } from './FilterBar';
-import { useDiscoverFeed, type EventSection } from './useDiscoverFeed';
+import { useDiscoverFeed, type EventSection, type FeedItem } from './useDiscoverFeed';
 
 // Discover feed — the populated list (frame 177:832), the no-match empty state
 // (272:1353) and the skeleton loading state (273:1388). City scope comes from
@@ -56,14 +61,26 @@ export function DiscoverScreen() {
   const toggleSave = useToggleSave();
 
   const renderItem = useCallback(
-    ({ item }: { item: Event }) => (
+    ({ item }: { item: FeedItem }) => {
+      // Multi-day runs (exhibitions) show their date range where the
+      // time/date-chip normally sit; single-day events render as before.
+      const ranged = isMultiDay(item.starts_at, item.ends_at);
+      return (
       <View style={styles.cardWrap}>
         <EventCard
           title={item.title}
           venue={`${item.venue.name} · ${item.venue.address}`}
-          time={timeLabel(item.starts_at, item.ends_at)}
+          time={
+            ranged
+              ? dateRangeLabel(item.starts_at, item.ends_at as string, t.lang)
+              : timeLabel(item.starts_at, item.ends_at)
+          }
           price={item.is_free ? t('event.free') : item.price_text}
-          dateLabel={dateChipLabel(item.starts_at, t.lang)}
+          dateLabel={
+            ranged
+              ? dateRangeChipLabel(item.starts_at, item.ends_at as string, t.lang)
+              : dateChipLabel(item.starts_at, t.lang)
+          }
           category={categoryLabel(item.category, t)}
           imageUrl={item.cover_url}
           saved={savedIds.has(item.id)}
@@ -71,7 +88,8 @@ export function DiscoverScreen() {
           onToggleSave={() => toggleSave(item.id, savedIds.has(item.id))}
         />
       </View>
-    ),
+      );
+    },
     [router, savedIds, toggleSave, t],
   );
 
@@ -117,7 +135,7 @@ export function DiscoverScreen() {
       ) : (
         <SectionList
           sections={sections}
-          keyExtractor={(item) => item.id}
+          keyExtractor={(item) => item.feedKey}
           renderItem={renderItem}
           renderSectionHeader={renderSectionHeader}
           ListHeaderComponent={

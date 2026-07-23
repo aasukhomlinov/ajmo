@@ -75,10 +75,8 @@ export const ru: Record<TranslationKey, string> = {
 
   'date.any': 'Любое время',
   'date.today': 'Сегодня',
-  'date.thisWeek': 'Эта неделя',
-  'date.nextWeek': 'Следующая неделя',
-  'date.thisMonth': 'Этот месяц',
-  'date.nextMonth': 'Следующий месяц',
+  'date.thisWeekend': 'В выходные',
+  'date.thisWeek': 'На этой неделе',
 
   'category.music': 'Музыка',
   'category.party': 'Вечеринка',

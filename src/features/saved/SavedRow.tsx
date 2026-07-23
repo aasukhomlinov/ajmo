@@ -9,7 +9,7 @@ import Reanimated, {
   type SharedValue,
 } from 'react-native-reanimated';
 
-import { dateChipLabel } from '@/lib/datetime';
+import { dateChipLabel, dateRangeChipLabel, isMultiDay } from '@/lib/datetime';
 import { useT } from '@/lib/i18n';
 import { theme } from '@/lib/theme';
 import type { Event } from '@/lib/types';
@@ -54,7 +54,11 @@ export function SavedRow({ event, onPress, onDelete }: SavedRowProps) {
       <EventRow
         title={event.title}
         venue={event.venue.name}
-        date={dateChipLabel(event.starts_at, t.lang)}
+        date={
+          isMultiDay(event.starts_at, event.ends_at)
+            ? dateRangeChipLabel(event.starts_at, event.ends_at as string, t.lang)
+            : dateChipLabel(event.starts_at, t.lang)
+        }
         imageUrl={event.cover_url}
         onPress={onPress}
       />

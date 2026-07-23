@@ -64,6 +64,55 @@ export function detailDateLabel(iso: string, lang: LanguageCode): string {
   return capitalize(format(parseISO(iso), DETAIL_PATTERNS[lang], { locale: LOCALES[lang] }));
 }
 
+// Multi-day run ranges (exhibitions): month word order / punctuation per
+// language, full month for meta/detail lines, abbreviated for the cover chip.
+const RANGE_PATTERNS: Record<LanguageCode, string> = {
+  en: 'd MMMM',
+  ru: 'd MMMM',
+  sr: 'd. MMMM',
+};
+
+const RANGE_CHIP_PATTERNS: Record<LanguageCode, string> = {
+  en: 'd MMM',
+  ru: 'd MMM',
+  sr: 'd. MMM',
+};
+
+/** True when the event runs across multiple calendar days (exhibition-style range). */
+export function isMultiDay(startIso: string, endIso?: string): boolean {
+  return Boolean(endIso) && dayKey(endIso as string) !== dayKey(startIso);
+}
+
+function rangeLabel(
+  startIso: string,
+  endIso: string,
+  lang: LanguageCode,
+  patterns: Record<LanguageCode, string>,
+): string {
+  const start = parseISO(startIso);
+  const end = parseISO(endIso);
+  // Same month: "5–21 July"; across months both ends spell the month out
+  // ("28 July – 3 August"); across years both ends carry the year too
+  // ("25 May 2021 – 25 May 2027" — multi-year museum runs).
+  const pattern =
+    start.getFullYear() === end.getFullYear() ? patterns[lang] : `${patterns[lang]} yyyy`;
+  const endLabel = format(end, pattern, { locale: LOCALES[lang] });
+  if (start.getFullYear() === end.getFullYear() && start.getMonth() === end.getMonth()) {
+    return `${format(start, 'd')}–${endLabel}`;
+  }
+  return `${format(start, pattern, { locale: LOCALES[lang] })} – ${endLabel}`;
+}
+
+/** Run-range line, e.g. "5–21 July" / "5–21 июля" / "5–21. jul". */
+export function dateRangeLabel(startIso: string, endIso: string, lang: LanguageCode): string {
+  return rangeLabel(startIso, endIso, lang, RANGE_PATTERNS);
+}
+
+/** Cover-chip run range, abbreviated + uppercased, e.g. "5–21 JUL". */
+export function dateRangeChipLabel(startIso: string, endIso: string, lang: LanguageCode): string {
+  return rangeLabel(startIso, endIso, lang, RANGE_CHIP_PATTERNS).toUpperCase();
+}
+
 /** Meta-row time, e.g. "21:00" or "20:00 – 22:00" when an end time exists. */
 export function timeLabel(startIso: string, endIso?: string): string {
   const start = format(parseISO(startIso), 'HH:mm');

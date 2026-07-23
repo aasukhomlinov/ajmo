@@ -84,10 +84,8 @@ export const en = {
   // Date presets (sheet radios + the date chip label)
   'date.any': 'Any Time',
   'date.today': 'Today',
+  'date.thisWeekend': 'This Weekend',
   'date.thisWeek': 'This Week',
-  'date.nextWeek': 'Next Week',
-  'date.thisMonth': 'This Month',
-  'date.nextMonth': 'Next Month',
 
   // Event categories (filter chips + cover/detail badges)
   'category.music': 'Music',

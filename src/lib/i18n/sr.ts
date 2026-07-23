@@ -74,10 +74,8 @@ export const sr: Record<TranslationKey, string> = {
 
   'date.any': 'Bilo kada',
   'date.today': 'Danas',
+  'date.thisWeekend': 'Ovog vikenda',
   'date.thisWeek': 'Ove nedelje',
-  'date.nextWeek': 'Sledeće nedelje',
-  'date.thisMonth': 'Ovog meseca',
-  'date.nextMonth': 'Sledećeg meseca',
 
   'category.music': 'Muzika',
   'category.party': 'Žurka',

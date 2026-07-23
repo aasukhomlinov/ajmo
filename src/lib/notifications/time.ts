@@ -1,4 +1,5 @@
-// Belgrade-anchored fire-time math for the saved-event reminders (Phase 6).
+// Belgrade-anchored calendar math: fire times for the saved-event reminders
+// (Phase 6) and day boundaries for the Discover date presets.
 //
 // events.starts_at is stored so that its Europe/Belgrade wall-clock equals the
 // intended event time (see src/lib/datetime.ts + the Phase 5 seed fix). A
@@ -81,6 +82,27 @@ function instantFromBelgradeWallClock(wall: WallClock): Date {
     guess += wallAsUtc - seenAsUtc;
   }
   return new Date(guess);
+}
+
+/** Start of the Belgrade calendar day `daysAhead` days after the instant's day. */
+export function belgradeStartOfDay(instant: Date, daysAhead = 0): Date {
+  const wall = belgradeWallClock(instant);
+  // Calendar addition on a UTC scratch date — immune to the device zone.
+  const d = new Date(Date.UTC(wall.year, wall.month - 1, wall.day + daysAhead));
+  return instantFromBelgradeWallClock({
+    year: d.getUTCFullYear(),
+    month: d.getUTCMonth() + 1,
+    day: d.getUTCDate(),
+    hour: 0,
+    minute: 0,
+    second: 0,
+  });
+}
+
+/** Belgrade weekday of the instant: 0 = Sunday … 6 = Saturday. */
+export function belgradeWeekday(instant: Date): number {
+  const wall = belgradeWallClock(instant);
+  return new Date(Date.UTC(wall.year, wall.month - 1, wall.day)).getUTCDay();
 }
 
 /** `startsAt` shifted `days` calendar days back, same Belgrade wall-clock time. */

@@ -15,7 +15,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Svg, { Defs, LinearGradient, Rect, Stop } from 'react-native-svg';
 
 import { useIsSaved, useToggleSave } from '@/lib/api/saves';
-import { detailDateLabel, timeLabel } from '@/lib/datetime';
+import { dateRangeLabel, detailDateLabel, isMultiDay, timeLabel } from '@/lib/datetime';
 import { useT } from '@/lib/i18n';
 import { theme } from '@/lib/theme';
 import type { Event } from '@/lib/types';
@@ -63,7 +63,11 @@ export function EventDetailScreen({ event }: EventDetailScreenProps) {
     void Linking.openURL(event.source_url);
   }, [event.source_url]);
 
-  const dateLine = `${detailDateLabel(event.starts_at, t.lang)} · ${timeLabel(event.starts_at, event.ends_at)}`;
+  // Multi-day runs (exhibitions) show the range ("5–21 July") instead of a
+  // weekday + time — a start time is meaningless across a weeks-long run.
+  const dateLine = isMultiDay(event.starts_at, event.ends_at)
+    ? dateRangeLabel(event.starts_at, event.ends_at as string, t.lang)
+    : `${detailDateLabel(event.starts_at, t.lang)} · ${timeLabel(event.starts_at, event.ends_at)}`;
   const priceLine = event.is_free ? t('event.free') : event.price_text;
   const covers = event.covers ?? [event.cover_url];
 

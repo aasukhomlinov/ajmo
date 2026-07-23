@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
-import { startOfDay } from 'date-fns';
 
+import { belgradeStartOfDay } from '@/lib/notifications/time';
 import { supabase } from '@/lib/supabase';
 import { useLanguage } from '@/lib/stores/settings';
 import type { CityId, Event, EventCategory, LanguageCode, LocalizedText } from '@/lib/types';
@@ -127,14 +127,21 @@ export const eventKeys = {
   byIds: (ids: string[], lang: LanguageCode) => ['events', 'byIds', ids, lang] as const,
 };
 
-/** Published, upcoming events for a city, soonest first. City scope is a query param. */
+/**
+ * Published events for a city that are upcoming or still running, soonest
+ * first. Range-aware gate: keep a row while COALESCE(ends_at, starts_at) is
+ * today-or-later (Belgrade calendar day — so a multi-day exhibition stays in
+ * the feed through its closing day). PostgREST can't COALESCE inside a filter,
+ * so it's spelled as an OR over the two shapes.
+ */
 async function fetchCityEvents(city: CityId, lang: LanguageCode): Promise<Event[]> {
+  const todayStart = belgradeStartOfDay(new Date()).toISOString();
   const { data, error } = await supabase
     .from('events')
     .select(EVENT_SELECT)
     .eq('status', 'published')
     .eq('cities.slug', city)
-    .gte('starts_at', startOfDay(new Date()).toISOString())
+    .or(`ends_at.gte.${todayStart},and(ends_at.is.null,starts_at.gte.${todayStart})`)
     .order('starts_at', { ascending: true });
 
   if (error) throw error;

@@ -3,7 +3,7 @@ import { MagnifyingGlass, XCircle } from 'phosphor-react-native';
 import { useCallback } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { dateChipLabel } from '@/lib/datetime';
+import { dateChipLabel, dateRangeChipLabel, isMultiDay } from '@/lib/datetime';
 import { useT } from '@/lib/i18n';
 import { useActiveCity } from '@/lib/stores/city';
 import { theme } from '@/lib/theme';
@@ -53,7 +53,11 @@ export function SearchScreen() {
         key={event.id}
         title={event.title}
         venue={event.venue.name}
-        date={dateChipLabel(event.starts_at, t.lang)}
+        date={
+          isMultiDay(event.starts_at, event.ends_at)
+            ? dateRangeChipLabel(event.starts_at, event.ends_at as string, t.lang)
+            : dateChipLabel(event.starts_at, t.lang)
+        }
         imageUrl={event.cover_url}
         onPress={onPress}
       />
