@@ -57,6 +57,8 @@
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { jsonrepair } from 'npm:jsonrepair@3';
+import { isSameEvent, nearInstant } from '../_shared/similarity.ts';
+import { dhashBytes } from '../_shared/cover-hash.ts';
 
 const TZ = 'Europe/Belgrade';
 const EXTRACT_MODEL = 'claude-sonnet-4-6';
@@ -72,7 +74,20 @@ const STORAGE_BUCKET = 'event-covers';
 const PUBLIC_OBJECT_MARKER = '/storage/v1/object/public/';
 const APIFY_ACTOR = 'apify~instagram-post-scraper';
 const INSTAGRAM_POSTS = 12;
-const INSTAGRAM_NEWER_THAN = '21 days';
+// The actor bills per RESULT ($2.70/1k, no compute charge — measured
+// 2026-07-23), so the fetch window is the cost lever: a 21-day window re-bills
+// the whole backlog every sweep (~$1.25/sweep fleet-wide), a since-last-sweep
+// window bills only new posts (~$0.20/day). The window adapts to the gap since
+// the last CLEAN extract (+1 day slack), so a missed night or a failed run
+// self-heals by widening; first-ever runs sweep the full 21 days.
+const INSTAGRAM_WINDOW_MAX_DAYS = 21;
+const INSTAGRAM_WINDOW_MIN_DAYS = 2;
+
+function igWindowDays(lastRunAt: string | null): number {
+  if (!lastRunAt) return INSTAGRAM_WINDOW_MAX_DAYS;
+  const days = Math.ceil((Date.now() - Date.parse(lastRunAt)) / 86_400_000) + 1;
+  return Math.max(INSTAGRAM_WINDOW_MIN_DAYS, Math.min(days, INSTAGRAM_WINDOW_MAX_DAYS));
+}
 // Realistic browser UA: several venue sites (domomladine.org) 403 bot-looking agents.
 const BROWSER_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36';
@@ -86,6 +101,7 @@ interface Source {
   url: string;
   city_id: string;
   venue_id: string | null; // null = organizer source; venue resolved per event
+  last_run_at: string | null; // last clean extract; drives the IG fetch window
 }
 
 interface ExtractedEvent {
@@ -493,60 +509,10 @@ ${venueList}` : ''}`;
 // (title, starts_at) matching lets near-duplicates pile up. Compare only events
 // at the SAME instant, on the DISTINCTIVE tokens (title minus format/stop/venue
 // noise) — "Kinoklub: X" vs "Kinoklub: Y" share a frame but stay distinct.
-
-// Extend as needed (ru/sr/en).
-const STOP_WORDS = new Set([
-  's', 'sa', 'с', 'i', 'и', 'u', 'в', 'na', 'на', 'za', 'за', 'o', 'об', 'про',
-  'the', 'a', 'an', 'of', 'and', 'with', 'from', 'this', 'at', 'on', 'over', 'takes',
-]);
-// Recurring event-format words that frame a title. Extend as needed (ru/sr/en).
-// Weekday/promo framing added after the Karmakoma miss ("THIS SATURDAY |
-// Karmakoma takeover…" vs "Club Drugstore takes over Karmakoma…" scored 0.67).
-const FORMAT_MARKERS = new Set([
-  'kinoklub', 'киноклуб', 'klub', 'клуб', 'club', 'film', 'filmski', 'фильм',
-  'koncert', 'концерт', 'izlozba', 'izložba', 'выставка', 'exhibition',
-  'radionica', 'workshop', 'vece', 'veče', 'večer', 'вечер',
-  'zurka', 'žurka', 'party', 'забава', 'quiz', 'квиз',
-  'predstava', 'представление', 'спектакль', 'dj', 'live',
-  'takeover', 'tonight', 'today', 'monday', 'tuesday', 'wednesday', 'thursday',
-  'friday', 'saturday', 'sunday',
-]);
-
-function normalizeTitle(t: string): string {
-  return t.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-}
-
-function distinctiveTokens(title: string, venueName: string): Set<string> {
-  const venueTokens = new Set(normalizeTitle(venueName).split(' '));
-  const out = new Set<string>();
-  for (const tok of normalizeTitle(title).split(' ')) {
-    if (tok.length < 2) continue;
-    if (STOP_WORDS.has(tok) || FORMAT_MARKERS.has(tok) || venueTokens.has(tok)) continue;
-    if (/^\d{4}$/.test(tok)) continue; // years
-    out.add(tok);
-  }
-  return out;
-}
-
-/** Fuzzy-dedup time window: two posts announcing one event often parse the
- * start an hour or two apart (Karmakoma 22:00 vs 23:00), so same-instant
- * matching let the pair through. ±6h merges hour-wobble but keeps a matinee
- * vs evening show (≥9h) and day-apart repertoire runs separate. */
-const SAME_EVENT_WINDOW_MS = 6 * 3600_000;
-function nearInstant(a: string, b: string): boolean {
-  return Math.abs(Date.parse(a) - Date.parse(b)) <= SAME_EVENT_WINDOW_MS;
-}
-
-/** Near-instant titles only. All-frame titles fall back to exact normalized
- * equality so recurring formats never merge blindly. */
-function isSameEvent(titleA: string, titleB: string, venueName: string): boolean {
-  const a = distinctiveTokens(titleA, venueName);
-  const b = distinctiveTokens(titleB, venueName);
-  if (!a.size || !b.size) return normalizeTitle(titleA) === normalizeTitle(titleB);
-  let shared = 0;
-  for (const tok of a) if (b.has(tok)) shared += 1;
-  return shared / Math.min(a.size, b.size) >= 0.7;
-}
+// Shared with dedup-events (post-translate reconciliation): _shared/similarity.ts
+// transliterates Cyrillic→Latin + folds diacritics, so cross-script reposts
+// now match at insert time too. What still escapes this cheap check (cross-
+// LANGUAGE rewordings) is dedup-events' job.
 
 interface ExistingRow {
   id: string;
@@ -593,16 +559,50 @@ interface ExtractSummary {
 
 /** '#<slug>' discriminator so several events from ONE post get distinct
  * source_refs (Daka0-YDG1l → 4 plays; two even share an instant). Mirrors the
- * SQL backfill in 20260723 repair migration — keep the two in sync. */
+ * SQL backfill in 20260723 repair migration — keep the two in sync.
+ * LEGACY normalizer on purpose (no transliteration): slugs are persisted in
+ * source_ref, and the _shared/similarity.ts normalizer would silently rename
+ * every existing Cyrillic '#'-ref, orphaning primary dedup + the ledger. */
 function titleSlug(title: string): string {
-  return normalizeTitle(title).replace(/ /g, '-').slice(0, 80);
+  return title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/ /g, '-').slice(0, 80);
+}
+
+// Below this remaining budget the IG lane fails soft: the pre-check throw
+// costs nothing (no actor run), the queue marks the source failed with a
+// clear last_error, and non-IG sources drain unaffected. One run at the
+// current resultsLimit costs ~$0.02–0.03, so $0.10 leaves real headroom.
+const APIFY_MIN_REMAINING_USD = 0.1;
+
+/** Remaining USD in the Apify monthly cycle; null = unknown (fail-open —
+ * an unreachable limits endpoint must never block the sweep). */
+async function apifyRemainingUsd(token: string): Promise<number | null> {
+  try {
+    const res = await fetch('https://api.apify.com/v2/users/me/limits', {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!res.ok) return null;
+    const { data } = await res.json();
+    const used = data?.current?.monthlyUsageUsd;
+    const cap = data?.limits?.maxMonthlyUsageUsd;
+    return typeof used === 'number' && typeof cap === 'number' ? cap - used : null;
+  } catch {
+    return null;
+  }
 }
 
 async function fetchInstagramPosts(
-  handle: string,
+  source: Source,
 ): Promise<{ posts: RawItem[]; coverByPermalink: Map<string, string> }> {
   const token = Deno.env.get('APIFY_TOKEN');
   if (!token) throw new Error('APIFY_TOKEN secret not set (instagram source)');
+
+  const remaining = await apifyRemainingUsd(token);
+  if (remaining !== null && remaining < APIFY_MIN_REMAINING_USD) {
+    throw new Error(
+      `apify monthly budget exhausted ($${remaining.toFixed(2)} left) — IG sweep skipped, non-IG sources unaffected`,
+    );
+  }
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), 90_000);
@@ -614,9 +614,9 @@ async function fetchInstagramPosts(
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({
-          username: [handle],
+          username: [source.handle],
           resultsLimit: INSTAGRAM_POSTS,
-          onlyPostsNewerThan: INSTAGRAM_NEWER_THAN,
+          onlyPostsNewerThan: `${igWindowDays(source.last_run_at)} days`,
           skipPinnedPosts: true,
           addParentData: false,
         }),
@@ -681,7 +681,7 @@ async function phaseExtract(
   if (source.kind === 'instagram' && !testRaw) {
     // testRaw must never reach Apify — a test-hook call on an IG venue would
     // otherwise bill a real actor run.
-    const ig = await fetchInstagramPosts(source.handle); // Apify list of posts; no HTML fetch
+    const ig = await fetchInstagramPosts(source); // Apify list of posts; no HTML fetch
     rawItems = ig.posts;
     coverByPermalink = ig.coverByPermalink;
   } else if (!testRaw) {
@@ -706,7 +706,11 @@ async function phaseExtract(
     }
   }
   if (source.kind === 'instagram' && !testRaw && !rawItems.length) {
-    summary.elapsed_ms = Date.now() - t0; // quiet venue: green no-op run
+    // Quiet venue: green no-op — still a CLEAN sweep, so the window marker
+    // advances (otherwise a chronically quiet venue re-bills its whole
+    // backlog every night).
+    await admin.from('sources').update({ last_run_at: new Date().toISOString() }).eq('id', source.id);
+    summary.elapsed_ms = Date.now() - t0;
     return summary;
   }
 
@@ -1125,7 +1129,13 @@ async function phaseExtract(
     }
   }
 
-  await admin.from('sources').update({ last_run_at: new Date().toISOString() }).eq('id', source.id);
+  // last_run_at doubles as the IG fetch-window marker, so it only advances on
+  // a CLEAN extract: after a budget-skip, a failed chunk, or a ledger error
+  // the next sweep must keep the wide window, or the unprocessed posts fall
+  // out of it and are lost for good.
+  if (!summary.errors.length) {
+    await admin.from('sources').update({ last_run_at: new Date().toISOString() }).eq('id', source.id);
+  }
   summary.elapsed_ms = Date.now() - t0;
   return summary;
 }
@@ -1277,8 +1287,15 @@ interface CoversSummary {
   elapsed_ms: number;
 }
 
-/** Download (10s timeout, retry w/ backoff) and upload into the bucket; public URL back. */
-async function rehostCover(admin: Admin, key: string, sourceUrl: string): Promise<string> {
+/** Download (10s timeout, retry w/ backoff) and upload into the bucket; public
+ * URL back, plus the cover's perceptual dHash (dedup-events signal) computed
+ * here because the bytes are already in memory — hash failure never blocks
+ * the rehost. */
+async function rehostCover(
+  admin: Admin,
+  key: string,
+  sourceUrl: string,
+): Promise<{ url: string; hash: string | null }> {
   const imgRes = await fetchWithRetry(sourceUrl, 10_000);
   const bytes = new Uint8Array(await imgRes.arrayBuffer());
   const { error } = await admin.storage.from(STORAGE_BUCKET).upload(key, bytes, {
@@ -1286,7 +1303,10 @@ async function rehostCover(admin: Admin, key: string, sourceUrl: string): Promis
     upsert: true,
   });
   if (error) throw error;
-  return admin.storage.from(STORAGE_BUCKET).getPublicUrl(key).data.publicUrl;
+  return {
+    url: admin.storage.from(STORAGE_BUCKET).getPublicUrl(key).data.publicUrl,
+    hash: await dhashBytes(bytes),
+  };
 }
 
 function ogImage(html: string): string | null {
@@ -1341,8 +1361,11 @@ async function phaseCovers(admin: Admin, source: Source, venueName: string): Pro
         summary.unresolved += 1; // client falls back to the venue photo
         continue;
       }
-      const url = await rehostCover(admin, `${source.handle}/${row.id}.jpg`, candidate);
-      await admin.from('events').update({ covers: [url] }).eq('id', row.id);
+      const { url, hash } = await rehostCover(admin, `${source.handle}/${row.id}.jpg`, candidate);
+      await admin.from('events').update({
+        covers: [url],
+        ...(hash ? { cover_hash: hash, cover_hash_src: url } : {}),
+      }).eq('id', row.id);
       if (via === 'inline') summary.resolved_inline += 1;
       else summary.resolved_detail_page += 1;
     } catch (e) {
@@ -1518,7 +1541,7 @@ Deno.serve(async (req) => {
   // venue_id stays the path for the venue-backed fleet.
   let srcQ = admin
     .from('sources')
-    .select('id, kind, handle, url, city_id, venue_id')
+    .select('id, kind, handle, url, city_id, venue_id, last_run_at')
     .eq('enabled', true)
     .neq('handle', 'dcloza')
     .in('kind', ['telegram', 'official', 'tickets', 'instagram']);
