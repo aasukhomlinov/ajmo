@@ -33,6 +33,17 @@
 // already started/happened). Recap posts yield ZERO events even when they
 // mention future dates — their non-poster photos would also break the
 // poster-led feed. Counted per run as skipped_recap (never an error).
+//
+// Cost ledger (source_items): every processed item (IG/TG post, venue page)
+// records a content hash + outcome; repeat sweeps skip items whose hash is
+// unchanged instead of re-paying Sonnet for them (~95% of a fleet sweep's
+// LLM spend was re-extracting already-seen items). Fail-open by design:
+// ledger read/write errors, 'error' outcomes, changed hashes, and 'kept'
+// items whose event rows vanished (repairs) all re-extract. Body flag
+// `force_refresh: true` bypasses the filter for one run; after a prompt or
+// classifier change, invalidate with
+//   delete from source_items;                        -- whole fleet
+//   delete from source_items where source_id = ...;  -- one source
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { jsonrepair } from 'npm:jsonrepair@3';
@@ -177,6 +188,68 @@ function cleanHtml(html: string, origin = ''): string {
     .trim();
 }
 
+// ── Sweep items & the pre-extract ledger ─────────────────────────────────────
+/** One fetched source item (an IG/TG post, or the whole venue page): `block`
+ * is the text handed to the LLM, `hashInput` the content that identity-hashes
+ * it in the source_items ledger (caption/post text only — never CDN URLs or
+ * timestamps, they rotate without the content changing). */
+interface RawItem {
+  url: string;
+  block: string;
+  hashInput: string;
+}
+
+interface SweepItem {
+  url: string;
+  block: string;
+  hash: string;
+}
+
+interface LedgerRow {
+  item_url: string;
+  content_hash: string | null;
+  outcome: string;
+  event_refs: string[] | null;
+}
+
+async function sha256(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function chunkArray<T>(arr: T[], size: number): T[][] {
+  const out: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size));
+  return out;
+}
+
+/** JSON feeds (tribe REST, afisha.rs): hash a fingerprint of the event items
+ * only — id/title/slug/date keys in document order. Raw responses carry
+ * volatile junk (tokens, rest_urls, ordering noise) that would defeat a
+ * whole-body hash. Returns null for non-JSON bodies (HTML pages hash their
+ * cleaned text instead). */
+function jsonEventFingerprint(body: string): string | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(body);
+  } catch {
+    return null;
+  }
+  const KEY = /^(id|title|name|slug|date|start_date|end_date|start|end|utc_start_date|utc_end_date)$/i;
+  const out: string[] = [];
+  const walk = (v: unknown): void => {
+    if (Array.isArray(v)) v.forEach(walk);
+    else if (v && typeof v === 'object') {
+      for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
+        if (KEY.test(k) && (typeof val === 'string' || typeof val === 'number')) out.push(`${k}=${val}`);
+        else walk(val);
+      }
+    }
+  };
+  walk(data);
+  return out.length ? out.join('|') : null;
+}
+
 /** t.me/s preview → newest N post blocks (post date + cover URL inline) plus a
  * deterministic post-URL → first-photo map: the LLM echoes image_url per event
  * unreliably when one post yields several events, so covers attach from the
@@ -184,11 +257,11 @@ function cleanHtml(html: string, origin = ''): string {
 function telegramPosts(
   html: string,
   handle: string,
-): { posts: string[]; coverByPostUrl: Map<string, string> } {
+): { posts: RawItem[]; coverByPostUrl: Map<string, string> } {
   const blocks = html.split(
     new RegExp(`(?=<div class="tgme_widget_message[^"]*?" data-post="${handle}/)`),
   );
-  const posts: string[] = [];
+  const posts: RawItem[] = [];
   const coverByPostUrl = new Map<string, string>();
   for (const block of blocks) {
     const idMatch = block.match(new RegExp(`data-post="${handle}/(\\d+)"`));
@@ -204,9 +277,11 @@ function telegramPosts(
     );
     const text = textMatch ? cleanHtml(textMatch[1].replace(/<br\s*\/?>/gi, '\n')) : '';
     if (!text) continue;
-    posts.push(
-      `POST ${postUrl} | published: ${dateMatch?.[1] ?? 'unknown'} | image: ${photoMatch?.[1] ?? 'none'}\n${text}`,
-    );
+    posts.push({
+      url: postUrl,
+      block: `POST ${postUrl} | published: ${dateMatch?.[1] ?? 'unknown'} | image: ${photoMatch?.[1] ?? 'none'}\n${text}`,
+      hashInput: text,
+    });
   }
   return { posts: posts.slice(-TELEGRAM_POSTS), coverByPostUrl };
 }
@@ -475,6 +550,8 @@ interface ExtractSummary {
   fetched_bytes: number;
   chunks: number;
   parsed_via: ('native' | 'repair')[];
+  items_total: number; // fetched items (posts / pages) before the ledger filter
+  items_skipped: number; // skipped by the ledger (unchanged content, known verdict)
   events_extracted: number;
   events_upserted: number;
   backfilled: number;
@@ -499,7 +576,7 @@ function titleSlug(title: string): string {
 
 async function fetchInstagramPosts(
   handle: string,
-): Promise<{ payloads: string[]; coverByPermalink: Map<string, string> }> {
+): Promise<{ posts: RawItem[]; coverByPermalink: Map<string, string> }> {
   const token = Deno.env.get('APIFY_TOKEN');
   if (!token) throw new Error('APIFY_TOKEN secret not set (instagram source)');
 
@@ -529,7 +606,7 @@ async function fetchInstagramPosts(
   }
 
   const coverByPermalink = new Map<string, string>();
-  const posts: string[] = [];
+  const posts: RawItem[] = [];
   for (const it of items) {
     const caption = typeof it.caption === 'string' ? it.caption : '';
     const permalink = typeof it.url === 'string' ? it.url : '';
@@ -541,15 +618,13 @@ async function fetchInstagramPosts(
         (it.childPosts[0] as { displayUrl?: string })?.displayUrl) ||
       '';
     if (cover) coverByPermalink.set(permalink, cover);
-    posts.push(`published: ${published}\nurl: ${permalink}\n\n${caption}`);
+    posts.push({
+      url: permalink,
+      block: `published: ${published}\nurl: ${permalink}\n\n${caption}`,
+      hashInput: caption, // displayUrl rotates on the IG CDN — never hash it
+    });
   }
-  // No recent posts is a normal state for quiet venues, not an error — a throw
-  // here used to burn 3 queue retries (= 3 paid Apify calls) per night.
-  const payloads: string[] = [];
-  for (let i = 0; i < posts.length; i += TELEGRAM_CHUNK) {
-    payloads.push(posts.slice(i, i + TELEGRAM_CHUNK).join('\n\n---\n\n'));
-  }
-  return { payloads, coverByPermalink };
+  return { posts, coverByPermalink };
 }
 
 async function phaseExtract(
@@ -558,11 +633,13 @@ async function phaseExtract(
   venueName: string,
   apiKey: string,
   testRaw?: string,
+  forceRefresh = false,
 ): Promise<ExtractSummary> {
   const t0 = Date.now();
   const summary: ExtractSummary = {
     phase: 'extract', venue: venueName, fetched_bytes: 0, chunks: 0,
-    parsed_via: [], events_extracted: 0, events_upserted: 0, backfilled: 0,
+    parsed_via: [], items_total: 0, items_skipped: 0,
+    events_extracted: 0, events_upserted: 0, backfilled: 0,
     duplicates: 0, time_corrected: 0, dropped_invalid: 0,
     skipped_recap: 0, skipped_nonevents: 0, recap_posts: [], ambiguous_posts: [],
     errors: [], samples: [], elapsed_ms: 0,
@@ -570,55 +647,128 @@ async function phaseExtract(
 
   // Test hook: with `testRaw` set, skip fetch + Claude and parse `testRaw` as
   // the LLM output for one synthetic chunk — exercises the repair/unparseable
-  // path end-to-end incl. ingest_errors + non-green summary.
+  // path end-to-end incl. ingest_errors + non-green summary. The ledger is
+  // bypassed too: no fetched items, nothing to record.
   let html = '';
-  let igPayloads: string[] = [];
+  let rawItems: RawItem[] = [];
   let coverByPermalink: Map<string, string> | undefined;
   let coverByPostUrl: Map<string, string> | undefined;
   if (source.kind === 'instagram' && !testRaw) {
     // testRaw must never reach Apify — a test-hook call on an IG venue would
     // otherwise bill a real actor run.
     const ig = await fetchInstagramPosts(source.handle); // Apify list of posts; no HTML fetch
-    igPayloads = ig.payloads;
+    rawItems = ig.posts;
     coverByPermalink = ig.coverByPermalink;
   } else if (!testRaw) {
     const pageRes = await fetchWithRetry(source.url, 20_000);
     html = await pageRes.text();
     summary.fetched_bytes = html.length;
+    if (source.kind === 'telegram') {
+      const tg = telegramPosts(html, source.handle);
+      rawItems = tg.posts;
+      coverByPostUrl = tg.coverByPostUrl;
+      // A t.me page with zero parsed posts is a broken scrape (handle-casing
+      // regression), not a quiet venue — stay loud.
+      if (!rawItems.length) throw new Error('no posts parsed from t.me page');
+    } else {
+      const payload = cleanHtml(html, new URL(source.url).origin).slice(0, MAX_PAYLOAD_CHARS);
+      if (!payload) throw new Error('empty payload after cleaning');
+      rawItems = [{
+        url: source.url,
+        block: payload,
+        hashInput: jsonEventFingerprint(html) ?? payload,
+      }];
+    }
   }
-
-  // Payloads: instagram/telegram in chunks of 5 posts, HTML as one capped blob.
-  const payloads = testRaw
-    ? ['test hook']
-    : source.kind === 'instagram'
-      ? igPayloads
-      : source.kind === 'telegram'
-        ? (() => {
-            const tg = telegramPosts(html, source.handle);
-            coverByPostUrl = tg.coverByPostUrl;
-            const chunks: string[] = [];
-            for (let i = 0; i < tg.posts.length; i += TELEGRAM_CHUNK) {
-              chunks.push(tg.posts.slice(i, i + TELEGRAM_CHUNK).join('\n\n---\n\n'));
-            }
-            return chunks;
-          })()
-        : [cleanHtml(html, new URL(source.url).origin).slice(0, MAX_PAYLOAD_CHARS)];
-  if (source.kind === 'instagram' && !payloads.length) {
+  if (source.kind === 'instagram' && !testRaw && !rawItems.length) {
     summary.elapsed_ms = Date.now() - t0; // quiet venue: green no-op run
     return summary;
   }
-  if (!payloads.length || !payloads[0]) throw new Error('empty payload after cleaning');
 
-  // Existing rows for source_ref / 23505-backfill matching (few rows; JS-matched).
+  // Existing rows for source_ref / 23505-backfill matching (few rows;
+  // JS-matched). Loaded before the ledger filter because skipping a 'kept'
+  // item requires its event rows to still exist.
   const { data: existingRows } = await admin
     .from('events')
     .select('id, title, starts_at, ends_at, covers, source_url, source_ref')
     .eq('venue_id', source.venue_id);
   const existing = (existingRows ?? []) as ExistingRow[];
+  const existingRefs = new Set(existing.map((r) => r.source_ref).filter(Boolean) as string[]);
+
+  const items: SweepItem[] = [];
+  for (const it of rawItems) {
+    if (items.some((s) => s.url === it.url)) continue; // dup post in one fetch would break the batched upsert
+    items.push({ url: it.url, block: it.block, hash: await sha256(it.hashInput.replace(/\s+/g, ' ').trim()) });
+  }
+  summary.items_total = items.length;
+
+  // Pre-extract ledger filter: an item already processed with an unchanged
+  // content hash is not re-sent to the LLM. Fail-open — any ledger problem
+  // extracts everything and surfaces the error; never a silent skip.
+  let toExtract = items;
+  if (!testRaw && items.length) {
+    try {
+      const { data: ledgerRows, error: ledgerErr } = await admin
+        .from('source_items')
+        .select('item_url, content_hash, outcome, event_refs')
+        .eq('source_id', source.id);
+      if (ledgerErr) throw new Error(ledgerErr.message);
+      const ledger = new Map(((ledgerRows ?? []) as unknown as LedgerRow[]).map((r) => [r.item_url, r]));
+      const skipped: SweepItem[] = [];
+      toExtract = [];
+      for (const it of items) {
+        const row = ledger.get(it.url);
+        // NULL hash = backfilled from events.source_ref (content unknown):
+        // adopt today's hash below without re-extracting. An edit made since
+        // that original extract is missed once — the price of the backfill
+        // benefiting the very next sweep.
+        const hashOk = row && (row.content_hash === it.hash || row.content_hash === null);
+        // 'kept' items must still have their event rows — the ledger must
+        // never suppress an event back into non-existence (repair safety).
+        const refsAlive = (row?.event_refs ?? []).every((ref) => existingRefs.has(ref));
+        if (!forceRefresh && row && hashOk && row.outcome !== 'error' && refsAlive) skipped.push(it);
+        else toExtract.push(it);
+      }
+      summary.items_skipped = skipped.length;
+      if (skipped.length) {
+        // Full tuples: Postgres checks NOT NULL on the insert arm even when
+        // the row conflicts, so echo the existing verdict alongside the
+        // refreshed hash + last_seen.
+        const { error: upErr } = await admin.from('source_items').upsert(
+          skipped.map((it) => {
+            const row = ledger.get(it.url)!;
+            return {
+              source_id: source.id,
+              item_url: it.url,
+              content_hash: it.hash,
+              outcome: row.outcome,
+              event_refs: row.event_refs ?? [],
+              last_seen_at: new Date().toISOString(),
+            };
+          }),
+        );
+        if (upErr) throw new Error(upErr.message);
+      }
+    } catch (e) {
+      toExtract = items;
+      summary.items_skipped = 0;
+      summary.errors.push(`ledger: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
+  // Chunks: instagram/telegram in chunks of 5 posts, HTML as one capped blob.
+  const isPost = source.kind === 'instagram' || source.kind === 'telegram';
+  const chunks: SweepItem[][] = testRaw
+    ? [[]]
+    : isPost
+      ? chunkArray(toExtract, TELEGRAM_CHUNK)
+      : toExtract.length
+        ? [toExtract]
+        : [];
 
   const now = Date.now();
   const horizon = now + MAX_MONTHS_AHEAD * 30 * 24 * 3600 * 1000;
-  const insertedThisRun: { title: string; startsAt: string }[] = [];
+  const insertedThisRun: { title: string; startsAt: string; ref: string | null }[] = [];
   const system = extractPrompt(source, venueName);
   // Per-chunk timeout = min(90s, remaining wall-clock budget). RU chunks
   // measure 25-72s depending on content and API load; a fixed cap either
@@ -627,14 +777,15 @@ async function phaseExtract(
   // so nothing already extracted is lost).
   const deadline = t0 + 140_000; // leave ~10s of the 150s wall clock for inserts
 
-  for (const payload of payloads) {
+  for (const chunk of chunks) {
     summary.chunks += 1;
-    const timeoutMs = Math.min(payloads.length > 1 ? 90_000 : 125_000, deadline - Date.now());
+    const payload = testRaw ? 'test hook' : chunk.map((c) => c.block).join('\n\n---\n\n');
+    const timeoutMs = Math.min(chunks.length > 1 ? 90_000 : 125_000, deadline - Date.now());
     if (timeoutMs < 10_000) {
       summary.errors.push(`chunk ${summary.chunks}: skipped, out of time budget; re-run to resume`);
       continue;
     }
-    let items: (ExtractedEvent | PostClassification)[];
+    let parsedItems: (ExtractedEvent | PostClassification)[];
     try {
       const result = await claudeJsonArray<ExtractedEvent | PostClassification>(
         admin, source.venue_id, 'extract',
@@ -642,11 +793,12 @@ async function phaseExtract(
         `VENUE PAGE (${source.url}):\n\n${payload}`, 4096, timeoutMs,
         testRaw,
       );
-      items = result.data;
+      parsedItems = result.data;
       summary.parsed_via.push(result.via);
     } catch (e) {
       // A failed chunk must not lose the other chunk's events — but the run
-      // goes non-green and the raw output is already in ingest_errors.
+      // goes non-green and the raw output is already in ingest_errors. No
+      // ledger rows either: the chunk's items re-extract on the next sweep.
       summary.errors.push(`chunk ${summary.chunks}: ${e instanceof Error ? e.message : String(e)}`);
       continue;
     }
@@ -654,20 +806,38 @@ async function phaseExtract(
     // Partition post classifications (IG/telegram) from events. Events from
     // recap posts are ALSO dropped here in code — the prompt alone is no
     // guarantee, and the recap rule is a product invariant.
-    const classifications = items.filter(
+    const classifications = parsedItems.filter(
       (x): x is PostClassification => typeof (x as PostClassification).post === 'string' && !('title' in x),
     );
     const recapUrls = new Set(
       classifications.filter((c) => c.kind === 'recap').map((c) => c.post),
     );
+    const noneventUrls = new Set(
+      classifications.filter((c) => c.kind === 'nonevent').map((c) => c.post),
+    );
     summary.skipped_recap += recapUrls.size;
-    summary.skipped_nonevents += classifications.filter((c) => c.kind === 'nonevent').length;
+    summary.skipped_nonevents += noneventUrls.size;
     summary.recap_posts.push(...recapUrls);
     summary.ambiguous_posts.push(...classifications.filter((c) => c.ambiguous).map((c) => c.post));
-    const extracted = items.filter(
+    const extracted = parsedItems.filter(
       (x): x is ExtractedEvent => typeof (x as ExtractedEvent).title === 'string',
     ).filter((ev) => !(ev.event_url && recapUrls.has(ev.event_url)));
     summary.events_extracted += extracted.length;
+
+    // Ledger bookkeeping: which item each event belongs to, and which event
+    // ROW (by source_ref) it resolved to — the skip check verifies those refs
+    // still exist. A surviving event we can't pin to a ref (null) marks its
+    // item 'error' = always re-extract, never silently skippable.
+    const itemUrls = new Set(chunk.map((c) => c.url));
+    const keptRefs = new Map<string, (string | null)[]>();
+    const droppedItems = new Set<string>();
+    const erroredItems = new Set<string>();
+    const itemOf = (ev: ExtractedEvent): string | null =>
+      isPost ? (ev.event_url && itemUrls.has(ev.event_url) ? ev.event_url : null) : source.url;
+    const keep = (ev: ExtractedEvent, ref: string | null) => {
+      const u = itemOf(ev);
+      if (u) keptRefs.set(u, [...(keptRefs.get(u) ?? []), ref]);
+    };
 
     // Several events sharing ONE post/detail URL need a per-event
     // discriminator in source_ref, else the global unique key collapses them.
@@ -683,6 +853,8 @@ async function phaseExtract(
       const lastMoment = endsAt ?? startsAt;
       if (!startsAt || Date.parse(lastMoment!) < now || Date.parse(startsAt) > horizon) {
         summary.dropped_invalid += 1;
+        const iu = itemOf(ev);
+        if (iu) droppedItems.add(iu);
         continue;
       }
       const cover = source.kind === 'instagram'
@@ -701,6 +873,7 @@ async function phaseExtract(
       const refMatch = ref ? existing.find((r) => r.source_ref === ref) : undefined;
       if (refMatch) {
         summary.duplicates += 1;
+        keep(ev, ref);
         const patch: Record<string, unknown> = {};
         const endsParsed = endsAt ? Date.parse(endsAt) : null;
         const oldEnds = refMatch.ends_at ? Date.parse(refMatch.ends_at) : null;
@@ -731,6 +904,7 @@ async function phaseExtract(
       );
       if (dbMatch) {
         summary.duplicates += 1;
+        let resolvedRef = dbMatch.source_ref;
         const patch: Record<string, unknown> = {};
         if (cover && !dbMatch.covers?.[0]?.includes(PUBLIC_OBJECT_MARKER)) patch.covers = [cover];
         if (ev.event_url && (dbMatch.source_url === source.url || !dbMatch.source_url)) {
@@ -739,16 +913,20 @@ async function phaseExtract(
         if (ref && !dbMatch.source_ref) patch.source_ref = ref; // self-heal pre-backfill rows
         if (Object.keys(patch).length) {
           const { error: updErr } = await admin.from('events').update(patch).eq('id', dbMatch.id);
-          if (!updErr) summary.backfilled += 1;
+          if (!updErr) {
+            summary.backfilled += 1;
+            if (patch.source_ref) resolvedRef = ref;
+          }
         }
+        keep(ev, resolvedRef ?? null);
         continue;
       }
-      if (
-        insertedThisRun.some(
-          (p) => nearInstant(p.startsAt, startsAt) && isSameEvent(ev.title, p.title, venueName),
-        )
-      ) {
+      const twin = insertedThisRun.find(
+        (p) => nearInstant(p.startsAt, startsAt) && isSameEvent(ev.title, p.title, venueName),
+      );
+      if (twin) {
         summary.duplicates += 1;
+        keep(ev, twin.ref);
         continue;
       }
 
@@ -774,6 +952,8 @@ async function phaseExtract(
       if (insErr) {
         if (insErr.code !== '23505') {
           summary.errors.push(`insert ${ev.title}: ${insErr.message}`);
+          const iu = itemOf(ev);
+          if (iu) erroredItems.add(iu);
           continue;
         }
         // Dedup hit (source_ref key or venue+time+title index) — backfill
@@ -786,6 +966,7 @@ async function phaseExtract(
               r.title.toLowerCase() === ev.title.trim().toLowerCase() &&
               Date.parse(r.starts_at) === Date.parse(startsAt),
           );
+        let resolvedRef = match?.source_ref ?? null;
         const patch: Record<string, unknown> = {};
         if (match && cover && !match.covers?.[0]?.includes(PUBLIC_OBJECT_MARKER)) patch.covers = [cover];
         if (match && ev.event_url && (match.source_url === source.url || !match.source_url)) {
@@ -794,13 +975,18 @@ async function phaseExtract(
         if (match && ref && !match.source_ref) patch.source_ref = ref;
         if (match && Object.keys(patch).length) {
           const { error: updErr } = await admin.from('events').update(patch).eq('id', match.id);
-          if (!updErr) summary.backfilled += 1;
+          if (!updErr) {
+            summary.backfilled += 1;
+            if (patch.source_ref) resolvedRef = ref;
+          }
         }
+        keep(ev, resolvedRef);
         continue;
       }
 
       summary.events_upserted += 1;
-      insertedThisRun.push({ title: ev.title, startsAt });
+      keep(ev, ref);
+      insertedThisRun.push({ title: ev.title, startsAt, ref });
       if (summary.samples.length < 5) {
         summary.samples.push({
           title: ev.title,
@@ -810,6 +996,40 @@ async function phaseExtract(
           event_url: ev.event_url,
           image_url: ev.image_url,
         });
+      }
+    }
+
+    // Record every item's verdict so the next sweep can skip it — recap and
+    // nonevent posts produce no event row, and they are exactly the items we
+    // most want to stop paying for. A post the model never classified stays
+    // unrecorded and re-extracts next sweep (fail-open).
+    if (!testRaw && chunk.length) {
+      const nowIso = new Date().toISOString();
+      const rows: Record<string, unknown>[] = [];
+      for (const it of chunk) {
+        const kept = keptRefs.get(it.url);
+        let outcome: string | null;
+        if (erroredItems.has(it.url)) outcome = 'error';
+        else if (kept) outcome = kept.includes(null) ? 'error' : 'kept';
+        else if (recapUrls.has(it.url)) outcome = 'recap';
+        else if (noneventUrls.has(it.url)) outcome = 'nonevent';
+        else if (droppedItems.has(it.url)) outcome = 'dropped_invalid';
+        else if (!isPost) outcome = 'nonevent'; // page parsed clean, nothing resolvable on it
+        else if (classifications.some((c) => c.post === it.url)) outcome = 'dropped_invalid'; // announcement, no usable event
+        else outcome = null;
+        if (!outcome) continue;
+        rows.push({
+          source_id: source.id,
+          item_url: it.url,
+          content_hash: it.hash,
+          outcome,
+          event_refs: (kept ?? []).filter((r): r is string => r !== null),
+          last_seen_at: nowIso,
+        });
+      }
+      if (rows.length) {
+        const { error: ledErr } = await admin.from('source_items').upsert(rows);
+        if (ledErr) summary.errors.push(`ledger upsert: ${ledErr.message}`);
       }
     }
   }
@@ -1196,11 +1416,14 @@ Deno.serve(async (req) => {
   // Test hook (extract only): `_test_raw` in the body is parsed as the LLM
   // output instead of fetching/calling Claude — verifies the fail-loud path.
   const testRaw = typeof body?._test_raw === 'string' ? body._test_raw : undefined;
+  // Debug/repair hook: bypass the source_items ledger for this one run
+  // (everything fetched is re-extracted; verdicts and hashes are re-recorded).
+  const forceRefresh = body?.force_refresh === true || params.get('force_refresh') === 'true';
 
   try {
     const summary =
       phase === 'extract'
-        ? await phaseExtract(admin, src, venueName, anthropicKey, testRaw)
+        ? await phaseExtract(admin, src, venueName, anthropicKey, testRaw, forceRefresh)
         : phase === 'translate'
           ? await phaseTranslate(admin, src, venueName, anthropicKey)
           : phase === 'film'
