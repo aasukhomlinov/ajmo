@@ -14,15 +14,25 @@
 //               event-covers bucket. Per-image timeout + one retry.
 //   film      — no LLM. TMDb lookup for cinema events' film_query; fills
 //               events.film with localized titles that translate then uses
-//               verbatim. Runs after extract, before translate. Manual
-//               invocation only (not in the daily scheduler yet).
+//               verbatim. Runs after extract, before translate.
 //
 // Invoke: POST {"venue_id": "...", "phase": "extract"|"translate"|"covers"|"film"}
 // (phase defaults to extract; venue_id is required — no batch mode).
-// Dedup stays the events_dedup_idx unique index (venue, starts_at,
-// lower(title)); a 23505 backfills covers/source_url on the existing row.
+// Dedup, primary: events.source_ref = the event's own URL (IG permalink /
+// t.me post URL / website detail page), plus '#<title-slug>' when one post
+// yields several events. A re-read of the same post UPDATES the existing row
+// (time corrections included) instead of inserting a twin; events_source_ref_key
+// (global unique) guards it at the DB level. Secondary: the events_dedup_idx
+// unique index (venue, starts_at, lower(title)) + the fuzzy ±6h matcher
+// below, for rows without a per-event URL and reworded reposts.
 // events.title stays in the SOURCE language — rewriting it would break the
 // dedup key on re-parses; the app reads title_i18n with a scalar fallback.
+//
+// Recap rule (strict, product decision): an IG/telegram post is either an
+// ANNOUNCEMENT (announces something upcoming) or a RECAP (reports on something
+// already started/happened). Recap posts yield ZERO events even when they
+// mention future dates — their non-poster photos would also break the
+// poster-led feed. Counted per run as skipped_recap (never an error).
 
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 import { jsonrepair } from 'npm:jsonrepair@3';
@@ -244,6 +254,19 @@ async function claudeCall(
  * Throws when the text has no [...] block or repair still doesn't yield an
  * array — the caller must fail loud, never drop the batch silently.
  */
+/**
+ * Sonnet copies Serbian „X" quotations verbatim: the ASCII closing quote lands
+ * unescaped inside a JSON string, and when two such strings sit adjacent
+ * (title + description) even jsonrepair gives up ('Colon expected'). Output is
+ * deterministic, so retrying reproduces the same bytes. Swap the ASCII close
+ * of a „…" pair to typographic ” — only when what follows can't be a real
+ * JSON delimiter (so a legit string terminator is never touched) and the quote
+ * isn't already \"-escaped.
+ */
+function normalizeCurlyQuotePairs(slice: string): string {
+  return slice.replace(/„([^"„\n]{0,160}?)(?<!\\)"(?=\s*[^\s,}\]:"])/g, '„$1”');
+}
+
 function parseWithRepair<T>(raw: string): { data: T[]; via: 'native' | 'repair' } {
   const start = raw.indexOf('[');
   const end = raw.lastIndexOf(']');
@@ -254,9 +277,16 @@ function parseWithRepair<T>(raw: string): { data: T[]; via: 'native' | 'repair' 
     if (!Array.isArray(parsed)) throw new Error('not an array');
     return { data: parsed as T[], via: 'native' };
   } catch {
-    const parsed = JSON.parse(jsonrepair(slice)); // throws JSONRepairError on hopeless input
-    if (!Array.isArray(parsed)) throw new Error('repaired JSON is not an array');
-    return { data: parsed as T[], via: 'repair' };
+    const normalized = normalizeCurlyQuotePairs(slice);
+    try {
+      const parsed = JSON.parse(normalized);
+      if (!Array.isArray(parsed)) throw new Error('not an array');
+      return { data: parsed as T[], via: 'repair' };
+    } catch {
+      const parsed = JSON.parse(jsonrepair(normalized)); // throws JSONRepairError on hopeless input
+      if (!Array.isArray(parsed)) throw new Error('repaired JSON is not an array');
+      return { data: parsed as T[], via: 'repair' };
+    }
   }
 }
 
@@ -269,7 +299,7 @@ async function logIngestError(
   admin: Admin,
   venueId: string,
   phase: string,
-  kind: 'repair_needed' | 'unparseable',
+  kind: 'repair_needed' | 'unparseable' | 'phase_failed',
   message: string,
   raw: string,
 ): Promise<void> {
@@ -349,10 +379,14 @@ RULES:
 - DEDUPLICATE: pages often repeat the same event many times (calendar shows one exhibition on every day; ticketing pages duplicate their listings). Output each distinct event EXACTLY ONCE, using its full range when shown.
 - PRICES: "Ulaznice od 4.500,00 RSD" / "od 2.500,00" → price_min_rsd: 4500 / 2500 (Serbian format: "." thousands, "," decimals). "donacija"/"донат" → price_min_rsd null, is_free false. Explicitly free → is_free true.
 - IGNORE navigation, SEO keyword spam, "Ostala mesta u blizini" (nearby-venue) sections, and unrelated cities.
-${source.kind === 'telegram'
-    ? `- The input is a list of Telegram channel posts. Posts may omit the YEAR — infer it from the post's "published:" date (the event is on or shortly after it). Skip weekly schedule digests bundling many events, promos, and posts without a concrete event date. Set event_url to the post URL EXACTLY; image_url may be left null (covers attach from the post automatically).`
-    : source.kind === 'instagram'
-      ? `- The input is a list of Instagram posts; each starts with a "published:" date and a "url:" permalink, then the caption. Infer the YEAR from "published:". Skip weekly digests, promos, giveaways, and posts without a concrete date. Set event_url to the post's "url:" permalink EXACTLY. Leave image_url null.`
+${source.kind === 'telegram' || source.kind === 'instagram'
+    ? `- The input is a list of ${source.kind === 'telegram' ? 'Telegram channel posts (each starts with "POST <url>" and a "published:" date)' : 'Instagram posts (each starts with a "published:" date and a "url:" permalink, then the caption)'}. Posts may omit the YEAR — infer it from "published:" (the event is on or shortly after it). Set event_url to the post URL EXACTLY${source.kind === 'telegram' ? '; image_url may be left null (covers attach from the post automatically)' : '. Leave image_url null'}.
+- CLASSIFY EVERY POST FIRST. Before any events, emit one classification object per post: {"post": "<post url>", "kind": "announcement" | "recap" | "nonevent"}.
+  • "announcement" — the post announces something upcoming (afiša, programme, lineup, ticket info).
+  • "recap" — the post reports on something that already started or happened: "je zvanično počeo" / "је званично почео", thank-yous ("hvala svima"), photos/video FROM the event, atmosphere/press-report posts. Extract ZERO events from a recap — even when it mentions future dates or a remaining schedule. Never use a recap to create events.
+  • "nonevent" — no event content at all (promo, giveaway, menu, weekly digest bundling many events, post without a concrete date).
+  A post that BOTH announces a future date AND reports on a past one counts as "announcement" — add "ambiguous": true to its classification object so it can be reviewed; only clear recaps are skipped.
+- After the classification objects, emit the event objects for announcement posts only.`
       : `- event_url/image_url only from URLs literally present in the input; null otherwise.`}
 - CATEGORY: one of music, party, art, food, cinema, theatre, market, other. Exhibitions → "art", film → "cinema", concerts → "music", DJ/club → "party", ballet/opera/plays/talk-show-style stage shows → "theatre", lectures/games/workshops → "other". Null if truly unclear.
 - Keep title and description in the page's OWN language — translation happens in a separate pass.`;
@@ -367,15 +401,19 @@ ${source.kind === 'telegram'
 // Extend as needed (ru/sr/en).
 const STOP_WORDS = new Set([
   's', 'sa', 'с', 'i', 'и', 'u', 'в', 'na', 'на', 'za', 'за', 'o', 'об', 'про',
-  'the', 'a', 'an', 'of', 'and', 'with', 'from',
+  'the', 'a', 'an', 'of', 'and', 'with', 'from', 'this', 'at', 'on', 'over', 'takes',
 ]);
 // Recurring event-format words that frame a title. Extend as needed (ru/sr/en).
+// Weekday/promo framing added after the Karmakoma miss ("THIS SATURDAY |
+// Karmakoma takeover…" vs "Club Drugstore takes over Karmakoma…" scored 0.67).
 const FORMAT_MARKERS = new Set([
-  'kinoklub', 'киноклуб', 'klub', 'клуб', 'film', 'filmski', 'фильм',
+  'kinoklub', 'киноклуб', 'klub', 'клуб', 'club', 'film', 'filmski', 'фильм',
   'koncert', 'концерт', 'izlozba', 'izložba', 'выставка', 'exhibition',
   'radionica', 'workshop', 'vece', 'veče', 'večer', 'вечер',
   'zurka', 'žurka', 'party', 'забава', 'quiz', 'квиз',
   'predstava', 'представление', 'спектакль', 'dj', 'live',
+  'takeover', 'tonight', 'today', 'monday', 'tuesday', 'wednesday', 'thursday',
+  'friday', 'saturday', 'sunday',
 ]);
 
 function normalizeTitle(t: string): string {
@@ -394,7 +432,16 @@ function distinctiveTokens(title: string, venueName: string): Set<string> {
   return out;
 }
 
-/** Same-instant titles only. All-frame titles fall back to exact normalized
+/** Fuzzy-dedup time window: two posts announcing one event often parse the
+ * start an hour or two apart (Karmakoma 22:00 vs 23:00), so same-instant
+ * matching let the pair through. ±6h merges hour-wobble but keeps a matinee
+ * vs evening show (≥9h) and day-apart repertoire runs separate. */
+const SAME_EVENT_WINDOW_MS = 6 * 3600_000;
+function nearInstant(a: string, b: string): boolean {
+  return Math.abs(Date.parse(a) - Date.parse(b)) <= SAME_EVENT_WINDOW_MS;
+}
+
+/** Near-instant titles only. All-frame titles fall back to exact normalized
  * equality so recurring formats never merge blindly. */
 function isSameEvent(titleA: string, titleB: string, venueName: string): boolean {
   const a = distinctiveTokens(titleA, venueName);
@@ -409,8 +456,17 @@ interface ExistingRow {
   id: string;
   title: string;
   starts_at: string;
+  ends_at: string | null;
   covers: string[] | null;
   source_url: string | null;
+  source_ref: string | null;
+}
+
+/** Per-post classification the model emits before the events (IG/telegram). */
+interface PostClassification {
+  post: string;
+  kind: 'announcement' | 'recap' | 'nonevent';
+  ambiguous?: boolean;
 }
 
 interface ExtractSummary {
@@ -423,10 +479,22 @@ interface ExtractSummary {
   events_upserted: number;
   backfilled: number;
   duplicates: number;
+  time_corrected: number;
   dropped_invalid: number;
+  skipped_recap: number;
+  skipped_nonevents: number;
+  recap_posts: string[];
+  ambiguous_posts: string[];
   errors: string[];
   samples: unknown[];
   elapsed_ms: number;
+}
+
+/** '#<slug>' discriminator so several events from ONE post get distinct
+ * source_refs (Daka0-YDG1l → 4 plays; two even share an instant). Mirrors the
+ * SQL backfill in 20260723 repair migration — keep the two in sync. */
+function titleSlug(title: string): string {
+  return normalizeTitle(title).replace(/ /g, '-').slice(0, 80);
 }
 
 async function fetchInstagramPosts(
@@ -475,8 +543,8 @@ async function fetchInstagramPosts(
     if (cover) coverByPermalink.set(permalink, cover);
     posts.push(`published: ${published}\nurl: ${permalink}\n\n${caption}`);
   }
-  if (!posts.length) throw new Error(`no public posts for @${handle}`);
-
+  // No recent posts is a normal state for quiet venues, not an error — a throw
+  // here used to burn 3 queue retries (= 3 paid Apify calls) per night.
   const payloads: string[] = [];
   for (let i = 0; i < posts.length; i += TELEGRAM_CHUNK) {
     payloads.push(posts.slice(i, i + TELEGRAM_CHUNK).join('\n\n---\n\n'));
@@ -495,7 +563,9 @@ async function phaseExtract(
   const summary: ExtractSummary = {
     phase: 'extract', venue: venueName, fetched_bytes: 0, chunks: 0,
     parsed_via: [], events_extracted: 0, events_upserted: 0, backfilled: 0,
-    duplicates: 0, dropped_invalid: 0, errors: [], samples: [], elapsed_ms: 0,
+    duplicates: 0, time_corrected: 0, dropped_invalid: 0,
+    skipped_recap: 0, skipped_nonevents: 0, recap_posts: [], ambiguous_posts: [],
+    errors: [], samples: [], elapsed_ms: 0,
   };
 
   // Test hook: with `testRaw` set, skip fetch + Claude and parse `testRaw` as
@@ -505,7 +575,9 @@ async function phaseExtract(
   let igPayloads: string[] = [];
   let coverByPermalink: Map<string, string> | undefined;
   let coverByPostUrl: Map<string, string> | undefined;
-  if (source.kind === 'instagram') {
+  if (source.kind === 'instagram' && !testRaw) {
+    // testRaw must never reach Apify — a test-hook call on an IG venue would
+    // otherwise bill a real actor run.
     const ig = await fetchInstagramPosts(source.handle); // Apify list of posts; no HTML fetch
     igPayloads = ig.payloads;
     coverByPermalink = ig.coverByPermalink;
@@ -531,12 +603,16 @@ async function phaseExtract(
             return chunks;
           })()
         : [cleanHtml(html, new URL(source.url).origin).slice(0, MAX_PAYLOAD_CHARS)];
+  if (source.kind === 'instagram' && !payloads.length) {
+    summary.elapsed_ms = Date.now() - t0; // quiet venue: green no-op run
+    return summary;
+  }
   if (!payloads.length || !payloads[0]) throw new Error('empty payload after cleaning');
 
-  // Existing rows for 23505-backfill matching (few rows; matched in JS).
+  // Existing rows for source_ref / 23505-backfill matching (few rows; JS-matched).
   const { data: existingRows } = await admin
     .from('events')
-    .select('id, title, starts_at, covers, source_url')
+    .select('id, title, starts_at, ends_at, covers, source_url, source_ref')
     .eq('venue_id', source.venue_id);
   const existing = (existingRows ?? []) as ExistingRow[];
 
@@ -558,15 +634,15 @@ async function phaseExtract(
       summary.errors.push(`chunk ${summary.chunks}: skipped, out of time budget; re-run to resume`);
       continue;
     }
-    let extracted: ExtractedEvent[];
+    let items: (ExtractedEvent | PostClassification)[];
     try {
-      const result = await claudeJsonArray<ExtractedEvent>(
+      const result = await claudeJsonArray<ExtractedEvent | PostClassification>(
         admin, source.venue_id, 'extract',
         apiKey, EXTRACT_MODEL, system,
         `VENUE PAGE (${source.url}):\n\n${payload}`, 4096, timeoutMs,
         testRaw,
       );
-      extracted = result.data;
+      items = result.data;
       summary.parsed_via.push(result.via);
     } catch (e) {
       // A failed chunk must not lose the other chunk's events — but the run
@@ -574,7 +650,31 @@ async function phaseExtract(
       summary.errors.push(`chunk ${summary.chunks}: ${e instanceof Error ? e.message : String(e)}`);
       continue;
     }
+
+    // Partition post classifications (IG/telegram) from events. Events from
+    // recap posts are ALSO dropped here in code — the prompt alone is no
+    // guarantee, and the recap rule is a product invariant.
+    const classifications = items.filter(
+      (x): x is PostClassification => typeof (x as PostClassification).post === 'string' && !('title' in x),
+    );
+    const recapUrls = new Set(
+      classifications.filter((c) => c.kind === 'recap').map((c) => c.post),
+    );
+    summary.skipped_recap += recapUrls.size;
+    summary.skipped_nonevents += classifications.filter((c) => c.kind === 'nonevent').length;
+    summary.recap_posts.push(...recapUrls);
+    summary.ambiguous_posts.push(...classifications.filter((c) => c.ambiguous).map((c) => c.post));
+    const extracted = items.filter(
+      (x): x is ExtractedEvent => typeof (x as ExtractedEvent).title === 'string',
+    ).filter((ev) => !(ev.event_url && recapUrls.has(ev.event_url)));
     summary.events_extracted += extracted.length;
+
+    // Several events sharing ONE post/detail URL need a per-event
+    // discriminator in source_ref, else the global unique key collapses them.
+    const urlCount = new Map<string, number>();
+    for (const ev of extracted) {
+      if (ev.event_url) urlCount.set(ev.event_url, (urlCount.get(ev.event_url) ?? 0) + 1);
+    }
 
     for (const ev of extracted) {
       const startsAt = ev.title?.trim() ? belgradeToInstant(ev.date_start ?? '') : null;
@@ -590,33 +690,62 @@ async function phaseExtract(
         : source.kind === 'telegram'
           ? ((ev.event_url ? coverByPostUrl?.get(ev.event_url) : undefined) ?? ev.image_url ?? null)
           : (ev.image_url ?? null);
+      const ref = ev.event_url
+        ? (urlCount.get(ev.event_url)! > 1 ? `${ev.event_url}#${titleSlug(ev.title)}` : ev.event_url)
+        : null;
 
-      // Fuzzy dedup at the same instant: a reworded re-post of a DB row merges
-      // into it (backfilling cover/detail-url like the 23505 path); an in-run
-      // near-duplicate is just skipped.
+      // PRIMARY dedup: same source_ref = the same event re-read. A different
+      // parsed time UPDATES the row (post edits / re-reads) — never a twin.
+      // A stale non-storage cover is refreshed from today's fetch so phase
+      // `covers` can re-host it before the CDN link expires.
+      const refMatch = ref ? existing.find((r) => r.source_ref === ref) : undefined;
+      if (refMatch) {
+        summary.duplicates += 1;
+        const patch: Record<string, unknown> = {};
+        const endsParsed = endsAt ? Date.parse(endsAt) : null;
+        const oldEnds = refMatch.ends_at ? Date.parse(refMatch.ends_at) : null;
+        if (Date.parse(refMatch.starts_at) !== Date.parse(startsAt) || oldEnds !== endsParsed) {
+          patch.starts_at = startsAt;
+          patch.ends_at = endsAt;
+        }
+        if (cover && !refMatch.covers?.[0]?.includes(PUBLIC_OBJECT_MARKER)) patch.covers = [cover];
+        if (Object.keys(patch).length) {
+          const { error: updErr } = await admin.from('events').update(patch).eq('id', refMatch.id);
+          if (updErr) {
+            // 23505 = another row already occupies the corrected (venue,
+            // time, title) slot — a duplicate for the repair flow, not an error.
+            if (updErr.code !== '23505') summary.errors.push(`update ${refMatch.id}: ${updErr.message}`);
+          } else {
+            if (patch.starts_at) summary.time_corrected += 1;
+            summary.backfilled += 1;
+          }
+        }
+        continue;
+      }
+
+      // SECONDARY fuzzy dedup in a ±6h window: a reworded re-post of a DB
+      // row merges into it (backfilling cover/detail-url/source_ref); an
+      // in-run near-duplicate is just skipped.
       const dbMatch = existing.find(
-        (r) =>
-          Date.parse(r.starts_at) === Date.parse(startsAt) &&
-          isSameEvent(ev.title, r.title, venueName),
+        (r) => nearInstant(r.starts_at, startsAt) && isSameEvent(ev.title, r.title, venueName),
       );
       if (dbMatch) {
         summary.duplicates += 1;
         const patch: Record<string, unknown> = {};
-        if (!dbMatch.covers?.length && cover) patch.covers = [cover];
+        if (cover && !dbMatch.covers?.[0]?.includes(PUBLIC_OBJECT_MARKER)) patch.covers = [cover];
         if (ev.event_url && (dbMatch.source_url === source.url || !dbMatch.source_url)) {
           patch.source_url = ev.event_url;
         }
+        if (ref && !dbMatch.source_ref) patch.source_ref = ref; // self-heal pre-backfill rows
         if (Object.keys(patch).length) {
-          await admin.from('events').update(patch).eq('id', dbMatch.id);
-          summary.backfilled += 1;
+          const { error: updErr } = await admin.from('events').update(patch).eq('id', dbMatch.id);
+          if (!updErr) summary.backfilled += 1;
         }
         continue;
       }
       if (
         insertedThisRun.some(
-          (p) =>
-            Date.parse(p.startsAt) === Date.parse(startsAt) &&
-            isSameEvent(ev.title, p.title, venueName),
+          (p) => nearInstant(p.startsAt, startsAt) && isSameEvent(ev.title, p.title, venueName),
         )
       ) {
         summary.duplicates += 1;
@@ -636,6 +765,7 @@ async function phaseExtract(
         covers: cover ? [cover] : null, // raw URL; phase `covers` re-hosts
         source_type: source.kind === 'telegram' ? 'telegram' : source.kind === 'instagram' ? 'instagram' : 'website',
         source_url: ev.event_url ?? source.url,
+        source_ref: ref,
         status: 'published',
         // Lookup pending until phase `film` adds `resolved` (true or false).
         film: ev.category === 'cinema' && ev.film_query?.title ? { query: ev.film_query } : null,
@@ -646,21 +776,25 @@ async function phaseExtract(
           summary.errors.push(`insert ${ev.title}: ${insErr.message}`);
           continue;
         }
-        // Dedup hit — backfill cover/detail-url the existing row is missing.
+        // Dedup hit (source_ref key or venue+time+title index) — backfill
+        // cover/detail-url/source_ref the existing row is missing.
         summary.duplicates += 1;
-        const match = existing.find(
-          (r) =>
-            r.title.toLowerCase() === ev.title.trim().toLowerCase() &&
-            Date.parse(r.starts_at) === Date.parse(startsAt),
-        );
+        const match =
+          (ref ? existing.find((r) => r.source_ref === ref) : undefined) ??
+          existing.find(
+            (r) =>
+              r.title.toLowerCase() === ev.title.trim().toLowerCase() &&
+              Date.parse(r.starts_at) === Date.parse(startsAt),
+          );
         const patch: Record<string, unknown> = {};
-        if (match && !match.covers?.length && cover) patch.covers = [cover];
+        if (match && cover && !match.covers?.[0]?.includes(PUBLIC_OBJECT_MARKER)) patch.covers = [cover];
         if (match && ev.event_url && (match.source_url === source.url || !match.source_url)) {
           patch.source_url = ev.event_url;
         }
+        if (match && ref && !match.source_ref) patch.source_ref = ref;
         if (match && Object.keys(patch).length) {
-          await admin.from('events').update(patch).eq('id', match.id);
-          summary.backfilled += 1;
+          const { error: updErr } = await admin.from('events').update(patch).eq('id', match.id);
+          if (!updErr) summary.backfilled += 1;
         }
         continue;
       }
@@ -746,8 +880,9 @@ async function phaseTranslate(
     .from('events')
     .select('id, title, description, film')
     .eq('venue_id', source.venue_id)
+    // No source_ref filter: parse-venue rows carry source_ref now. The dcloza
+    // venue never reaches these phases (its only source is excluded upstream).
     .in('source_type', ['website', 'telegram', 'instagram'])
-    .is('source_ref', null) // parse-venue rows only (dcloza fills its own i18n)
     .is('title_i18n', null);
   if (error) throw new Error(error.message);
   const pending = (rows ?? []) as PendingTranslation[];
@@ -846,8 +981,7 @@ async function phaseCovers(admin: Admin, source: Source, venueName: string): Pro
     .from('events')
     .select('id, covers, source_url')
     .eq('venue_id', source.venue_id)
-    .in('source_type', ['website', 'telegram', 'instagram'])
-    .is('source_ref', null);
+    .in('source_type', ['website', 'telegram', 'instagram']);
   if (error) throw new Error(error.message);
 
   const needy = ((rows ?? []) as CoverRow[]).filter(
@@ -1085,11 +1219,24 @@ Deno.serve(async (req) => {
             : summary.phase === 'film'
               ? summary.resolved
               : summary.resolved_inline + summary.resolved_detail_page,
+      ...(summary.phase === 'extract'
+        ? { skipped_recap: summary.skipped_recap, skipped_nonevents: summary.skipped_nonevents }
+        : {}),
       errors: summary.errors.length,
       error_detail: summary.errors.length ? summary.errors.join(' | ') : null,
       finished_at: new Date().toISOString(),
     });
 
+    // Fail LOUD: any error beyond a budget-resume marker returns non-200 so
+    // the refresh_queue ticker retries/records it instead of marking `done`
+    // (the 2026-07-23 incident: Anthropic-credit 400s inside an HTTP-200 body
+    // silently killed a whole night of translations), and lands one
+    // phase_failed row in ingest_errors for post-mortem.
+    const realErrors = summary.errors.filter((e) => !/out of time budget|re-run to resume/.test(e));
+    if (realErrors.length) {
+      await logIngestError(admin, src.venue_id, phase, 'phase_failed', realErrors.join(' | '), '');
+      return Response.json({ ok: false, ...summary }, { status: 500 });
+    }
     return Response.json({ ok: summary.errors.length === 0, ...summary });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
@@ -1099,6 +1246,7 @@ Deno.serve(async (req) => {
       error_detail: message,
       finished_at: new Date().toISOString(),
     });
+    await logIngestError(admin, src.venue_id, phase, 'phase_failed', message, '');
     return Response.json({ ok: false, phase, venue: venueName, error: message }, { status: 500 });
   }
 });
